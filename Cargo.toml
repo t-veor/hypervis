@@ -1,0 +1,11 @@
+[package]
+name = "hypervis"
+version = "0.1.0"
+authors = ["Tyler Zhang <tianlinzhang@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+winit = "0.20"
+wgpu = "0.4"
+anyhow = "1.0"
+glsl-to-spirv = "0.1"
