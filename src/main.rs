@@ -1,67 +1,59 @@
 mod context;
+mod mesh4;
 
 use anyhow::Result;
 use winit::event::WindowEvent;
+use zerocopy::{AsBytes, FromBytes};
 
 use context::{Application, Ctx};
 
 #[repr(C)]
-#[derive(Copy, Clone, Debug)]
-struct Vertex {
-    position: [f32; 3],
-    color: [f32; 3],
+#[derive(Debug, Clone, Copy)]
+struct CutPlane {
+    normal: [f32; 4],
+    distance: f32,
 }
 
-impl Vertex {
-    fn desc<'a>() -> wgpu::VertexBufferDescriptor<'a> {
-        use std::mem;
-        wgpu::VertexBufferDescriptor {
-            stride: mem::size_of::<Vertex>() as wgpu::BufferAddress,
-            step_mode: wgpu::InputStepMode::Vertex,
-            attributes: &[
-                wgpu::VertexAttributeDescriptor {
-                    offset: 0,
-                    shader_location: 0,
-                    format: wgpu::VertexFormat::Float3,
-                },
-                wgpu::VertexAttributeDescriptor {
-                    offset: mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
-                    shader_location: 1,
-                    format: wgpu::VertexFormat::Float3,
-                },
-            ],
+#[repr(C)]
+#[derive(Debug, Clone, Copy, FromBytes, AsBytes)]
+struct DrawIndirectCommand {
+    vertex_count: u32,
+    instance_count: u32,
+    first_vertex: u32,
+    first_instance: u32,
+}
+
+impl Default for DrawIndirectCommand {
+    fn default() -> Self {
+        Self {
+            vertex_count: 0,
+            instance_count: 1,
+            first_vertex: 0,
+            first_instance: 0,
         }
     }
 }
 
-#[cfg_attr(rustfmt, rustfmt_skip)]
-const VERTICES: &[Vertex] = &[
-    Vertex { position: [-0.0868241, -0.49240386, 0.0], color: [0.5, 0.0, 0.5] }, // A
-    Vertex { position: [-0.49513406, -0.06958647, 0.0], color: [0.5, 0.0, 0.5] }, // B
-    Vertex { position: [-0.21918549, 0.44939706, 0.0], color: [0.5, 0.0, 0.5] }, // C
-    Vertex { position: [0.35966998, 0.3473291, 0.0], color: [0.5, 0.0, 0.5] }, // D
-    Vertex { position: [0.44147372, -0.2347359, 0.0],color: [0.5, 0.0, 0.5] }, // E
-];
-
-#[cfg_attr(rustfmt, rustfmt_skip)]
-const INDICES: &[u16] = &[
-    0, 1, 4,
-    1, 2, 4,
-    2, 3, 4,
-];
+const MAX_VERTEX_SIZE: wgpu::BufferAddress = 8192;
 
 struct TestApp {
-    mouse_pos: (i32, i32),
     render_pipeline: wgpu::RenderPipeline,
-    vertex_buffer: wgpu::Buffer,
-    index_buffer: wgpu::Buffer,
-    num_indices: u32,
+    compute_pipeline: wgpu::ComputePipeline,
+    mesh: mesh4::Mesh4,
+    cut_plane: CutPlane,
+    draw_indirect_command: wgpu::Buffer,
+    dst_vertices: wgpu::Buffer,
+    compute_bind_group: wgpu::BindGroup,
+    vb: wgpu::Buffer,
 }
 
 impl Application for TestApp {
     fn init(ctx: &mut Ctx) -> Self {
+        let mesh = mesh4::tesseract(&ctx.device, 1.0);
+
         let vs_src = include_str!("shader.vert");
         let fs_src = include_str!("shader.frag");
+        let cs_src = include_str!("shader.comp");
 
         let vs_spirv =
             glsl_to_spirv::compile(vs_src, glsl_to_spirv::ShaderType::Vertex)
@@ -69,12 +61,149 @@ impl Application for TestApp {
         let fs_spirv =
             glsl_to_spirv::compile(fs_src, glsl_to_spirv::ShaderType::Fragment)
                 .unwrap();
+        let cs_spirv =
+            glsl_to_spirv::compile(cs_src, glsl_to_spirv::ShaderType::Compute)
+                .unwrap();
 
         let vs_data = wgpu::read_spirv(vs_spirv).unwrap();
         let fs_data = wgpu::read_spirv(fs_spirv).unwrap();
+        let cs_data = wgpu::read_spirv(cs_spirv).unwrap();
 
         let vs_module = ctx.device.create_shader_module(&vs_data);
         let fs_module = ctx.device.create_shader_module(&fs_data);
+        let cs_module = ctx.device.create_shader_module(&cs_data);
+
+        let compute_bind_group_layout = ctx.device.create_bind_group_layout(
+            &wgpu::BindGroupLayoutDescriptor {
+                bindings: &[
+                    wgpu::BindGroupLayoutBinding {
+                        binding: 0,
+                        visibility: wgpu::ShaderStage::COMPUTE,
+                        ty: wgpu::BindingType::UniformBuffer { dynamic: false },
+                    },
+                    wgpu::BindGroupLayoutBinding {
+                        binding: 1,
+                        visibility: wgpu::ShaderStage::COMPUTE,
+                        ty: wgpu::BindingType::StorageBuffer {
+                            dynamic: false,
+                            readonly: true,
+                        },
+                    },
+                    wgpu::BindGroupLayoutBinding {
+                        binding: 2,
+                        visibility: wgpu::ShaderStage::COMPUTE,
+                        ty: wgpu::BindingType::StorageBuffer {
+                            dynamic: false,
+                            readonly: true,
+                        },
+                    },
+                    wgpu::BindGroupLayoutBinding {
+                        binding: 3,
+                        visibility: wgpu::ShaderStage::COMPUTE,
+                        ty: wgpu::BindingType::StorageBuffer {
+                            dynamic: false,
+                            readonly: false,
+                        },
+                    },
+                    wgpu::BindGroupLayoutBinding {
+                        binding: 4,
+                        visibility: wgpu::ShaderStage::COMPUTE,
+                        ty: wgpu::BindingType::StorageBuffer {
+                            dynamic: false,
+                            readonly: false,
+                        },
+                    },
+                ],
+            },
+        );
+
+        let compute_pipeline_layout = ctx.device.create_pipeline_layout(
+            &wgpu::PipelineLayoutDescriptor {
+                bind_group_layouts: &[&compute_bind_group_layout],
+            },
+        );
+
+        let compute_pipeline = ctx.device.create_compute_pipeline(
+            &wgpu::ComputePipelineDescriptor {
+                layout: &compute_pipeline_layout,
+                compute_stage: wgpu::ProgrammableStageDescriptor {
+                    module: &cs_module,
+                    entry_point: "main",
+                },
+            },
+        );
+
+        let cut_plane = CutPlane {
+            normal: [0.0, 0.0, 0.0, 1.0],
+            distance: 0.5,
+        };
+
+        let cut_plane_buffer = ctx
+            .device
+            .create_buffer_mapped(
+                1,
+                wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
+            )
+            .fill_from_slice(&[cut_plane]);
+
+        let draw_indirect_command = ctx
+            .device
+            .create_buffer_mapped(
+                1,
+                wgpu::BufferUsage::INDIRECT
+                    | wgpu::BufferUsage::STORAGE
+                    | wgpu::BufferUsage::COPY_DST,
+            )
+            .fill_from_slice(&[DrawIndirectCommand::default()]);
+
+        let dst_vertices = ctx.device.create_buffer(&wgpu::BufferDescriptor {
+            size: MAX_VERTEX_SIZE,
+            usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::VERTEX,
+        });
+
+        let compute_bind_group =
+            ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                layout: &compute_bind_group_layout,
+                bindings: &[
+                    wgpu::Binding {
+                        binding: 0,
+                        resource: wgpu::BindingResource::Buffer {
+                            buffer: &cut_plane_buffer,
+                            range: 0..std::mem::size_of_val(&cut_plane)
+                                as wgpu::BufferAddress,
+                        },
+                    },
+                    wgpu::Binding {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Buffer {
+                            buffer: &mesh.vertex_buffer,
+                            range: 0..mesh.vertex_buffer_size,
+                        },
+                    },
+                    wgpu::Binding {
+                        binding: 2,
+                        resource: wgpu::BindingResource::Buffer {
+                            buffer: &mesh.index_buffer,
+                            range: 0..mesh.index_buffer_size,
+                        },
+                    },
+                    wgpu::Binding {
+                        binding: 3,
+                        resource: wgpu::BindingResource::Buffer {
+                            buffer: &draw_indirect_command,
+                            range: 0..std::mem::size_of::<u32>()
+                                as wgpu::BufferAddress,
+                        },
+                    },
+                    wgpu::Binding {
+                        binding: 4,
+                        resource: wgpu::BindingResource::Buffer {
+                            buffer: &dst_vertices,
+                            range: 0..MAX_VERTEX_SIZE,
+                        },
+                    },
+                ],
+            });
 
         let render_pipeline_layout = ctx.device.create_pipeline_layout(
             &wgpu::PipelineLayoutDescriptor {
@@ -109,29 +238,40 @@ impl Application for TestApp {
                 primitive_topology: wgpu::PrimitiveTopology::TriangleList,
                 depth_stencil_state: None,
                 index_format: wgpu::IndexFormat::Uint16,
-                vertex_buffers: &[Vertex::desc()],
+                vertex_buffers: &[mesh4::Vertex4::desc()],
                 sample_count: 1,
                 sample_mask: !0,
                 alpha_to_coverage_enabled: false,
             },
         );
-
-        let vertex_buffer = ctx
+        let data = [
+            mesh4::Vertex4 {
+                position: [0.0, -0.5, 0.0, 1.0],
+                color: [1.0, 1.0, 1.0, 1.0],
+            },
+            mesh4::Vertex4 {
+                position: [-0.5, 0.5, 0.0, 1.0],
+                color: [1.0, 1.0, 1.0, 1.0],
+            },
+            mesh4::Vertex4 {
+                position: [0.5, 0.5, 0.0, 1.0],
+                color: [1.0, 1.0, 1.0, 1.0],
+            },
+        ];
+        let vb = ctx
             .device
-            .create_buffer_mapped(VERTICES.len(), wgpu::BufferUsage::VERTEX)
-            .fill_from_slice(VERTICES);
-
-        let index_buffer = ctx
-            .device
-            .create_buffer_mapped(INDICES.len(), wgpu::BufferUsage::INDEX)
-            .fill_from_slice(INDICES);
+            .create_buffer_mapped(3, wgpu::BufferUsage::VERTEX)
+            .fill_from_slice(&data);
 
         TestApp {
-            mouse_pos: (0, 0),
             render_pipeline,
-            vertex_buffer,
-            index_buffer,
-            num_indices: INDICES.len() as u32,
+            compute_pipeline,
+            mesh,
+            cut_plane,
+            compute_bind_group,
+            draw_indirect_command,
+            dst_vertices,
+            vb,
         }
     }
 
@@ -139,9 +279,6 @@ impl Application for TestApp {
 
     fn on_event(&mut self, _ctx: &mut Ctx, event: WindowEvent) {
         match event {
-            WindowEvent::CursorMoved { position, .. } => {
-                self.mouse_pos = (position.x, position.y)
-            }
             _ => (),
         }
     }
@@ -154,10 +291,31 @@ impl Application for TestApp {
             &wgpu::CommandEncoderDescriptor { todo: 0 },
         );
 
+        // reset the indirect command buffer
         {
-            let x_frac = self.mouse_pos.0 as f64 / ctx.size.width as f64;
-            let y_frac = self.mouse_pos.1 as f64 / ctx.size.height as f64;
+            let indirect_command = DrawIndirectCommand::default();
+            let staging_buffer = ctx
+                .device
+                .create_buffer_mapped(1, wgpu::BufferUsage::COPY_SRC)
+                .fill_from_slice(&[indirect_command]);
+            encoder.copy_buffer_to_buffer(
+                &staging_buffer,
+                0,
+                &self.draw_indirect_command,
+                0,
+                std::mem::size_of::<DrawIndirectCommand>()
+                    as wgpu::BufferAddress,
+            );
+        }
 
+        {
+            let mut compute_pass = encoder.begin_compute_pass();
+            compute_pass.set_pipeline(&self.compute_pipeline);
+            compute_pass.set_bind_group(0, &self.compute_bind_group, &[]);
+            compute_pass.dispatch(1, 1, 1);
+        }
+
+        {
             let mut render_pass =
                 encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     color_attachments: &[
@@ -167,9 +325,9 @@ impl Application for TestApp {
                             load_op: wgpu::LoadOp::Clear,
                             store_op: wgpu::StoreOp::Store,
                             clear_color: wgpu::Color {
-                                r: x_frac,
-                                g: y_frac,
-                                b: 0.3,
+                                r: 0.0,
+                                g: 0.0,
+                                b: 0.0,
                                 a: 1.0,
                             },
                         },
@@ -178,9 +336,9 @@ impl Application for TestApp {
                 });
 
             render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_vertex_buffers(0, &[(&self.vertex_buffer, 0)]);
-            render_pass.set_index_buffer(&self.index_buffer, 0);
-            render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
+            render_pass.set_vertex_buffers(0, &[(&self.dst_vertices, 0)]);
+            // render_pass.draw(0..3, 0..1);
+            render_pass.draw_indirect(&self.draw_indirect_command, 0);
         }
 
         ctx.queue.submit(&[encoder.finish()]);

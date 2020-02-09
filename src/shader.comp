@@ -1,0 +1,66 @@
+#version 450
+layout (local_size_x = 64) in;
+
+struct Vertex4 {
+    vec4 position;
+    vec4 color;
+};
+
+struct DrawIndirectCommand {
+    uint vertex_count;
+    uint instance_count;
+    uint first_vertex;
+    uint first_instance;
+};
+
+layout(set = 0, binding = 0) uniform CutPlane {
+    vec4 normal;
+    float distance;
+} cut_plane;
+
+layout(set = 0, binding = 1) buffer SrcVertices {
+    Vertex4 vertices[];
+} src_vertices;
+
+layout(set = 0, binding = 2) buffer SrcIndices {
+    uint indices[];
+} src_indices;
+
+layout(set = 0, binding = 3) buffer DrawCommand {
+    DrawIndirectCommand command;
+} dst_command;
+
+layout(set = 0, binding = 4) buffer DstVertices {
+    Vertex4 vertices[];
+} dst_vertices;
+
+bool cut_line_seg(vec4 start, vec4 end, out vec4 intersection) {
+    vec4 b = end - start;
+    float z = dot(b, cut_plane.normal);
+
+    if (z != 0.) {
+        float t = (cut_plane.distance - dot(start, cut_plane.normal)) / z;
+        if (0. <= t && t <= 1.) {
+            intersection = start + t * b;
+            return true;
+        }
+        else {
+            return false;
+        }
+    }
+    return false;
+}
+
+const vec2 positions[3] = vec2[3](
+    vec2(0.0, -0.5),
+    vec2(-0.5, 0.5),
+    vec2(0.5, 0.5)
+);
+
+void main() {
+    uint index = atomicAdd(dst_command.command.vertex_count, 3);
+    for (uint i = 0; i < 3; i++) {
+        dst_vertices.vertices[index + i].position = vec4(positions[i] + vec2(float(index) / 3 / 64 - 0.5, 0), 0.0, 1.0);
+        dst_vertices.vertices[index + i].color = vec4(float(index) / 3 / 64, 1.0, 1.0, 1.0);
+    }
+}
