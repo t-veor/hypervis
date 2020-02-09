@@ -119,6 +119,7 @@ pub struct Mesh4 {
     pub index_buffer: wgpu::Buffer,
     pub vertex_buffer_size: wgpu::BufferAddress,
     pub index_buffer_size: wgpu::BufferAddress,
+    pub simplex_count: u32,
 }
 
 pub fn tesseract(device: &wgpu::Device, size: f32) -> Mesh4 {
@@ -128,6 +129,8 @@ pub fn tesseract(device: &wgpu::Device, size: f32) -> Mesh4 {
         as wgpu::BufferAddress;
     let index_buffer_size =
         (indices.len() * std::mem::size_of::<u32>()) as wgpu::BufferAddress;
+
+    let simplex_count = (indices.len() / 4) as u32;
 
     let vertex_buffer = device
         .create_buffer_mapped(
@@ -151,5 +154,6 @@ pub fn tesseract(device: &wgpu::Device, size: f32) -> Mesh4 {
         index_buffer,
         vertex_buffer_size,
         index_buffer_size,
+        simplex_count,
     }
 }

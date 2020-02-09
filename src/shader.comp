@@ -1,5 +1,7 @@
 #version 450
-layout (local_size_x = 64) in;
+#define NUM_INSTANCES 64
+
+layout (local_size_x = NUM_INSTANCES) in;
 
 struct Vertex4 {
     vec4 position;
@@ -18,28 +20,32 @@ layout(set = 0, binding = 0) uniform CutPlane {
     float distance;
 } cut_plane;
 
-layout(set = 0, binding = 1) buffer SrcVertices {
+layout(set = 1, binding = 0) buffer SimplexCount {
+    uint count;
+} simplex_count;
+
+layout(set = 1, binding = 1) buffer SrcVertices {
     Vertex4 vertices[];
 } src_vertices;
 
-layout(set = 0, binding = 2) buffer SrcIndices {
+layout(set = 1, binding = 2) buffer SrcIndices {
     uint indices[];
 } src_indices;
 
-layout(set = 0, binding = 3) buffer DrawCommand {
+layout(set = 2, binding = 0) buffer DrawCommand {
     DrawIndirectCommand command;
 } dst_command;
 
-layout(set = 0, binding = 4) buffer DstVertices {
+layout(set = 2, binding = 1) buffer DstVertices {
     Vertex4 vertices[];
 } dst_vertices;
 
-bool cut_line_seg(vec4 start, vec4 end, out vec4 intersection) {
+bool cut_line_seg(vec4 start, vec4 end, out vec4 intersection, out float t) {
     vec4 b = end - start;
     float z = dot(b, cut_plane.normal);
 
     if (z != 0.) {
-        float t = (cut_plane.distance - dot(start, cut_plane.normal)) / z;
+        t = (cut_plane.distance - dot(start, cut_plane.normal)) / z;
         if (0. <= t && t <= 1.) {
             intersection = start + t * b;
             return true;
@@ -60,7 +66,7 @@ const vec2 positions[3] = vec2[3](
 void main() {
     uint index = atomicAdd(dst_command.command.vertex_count, 3);
     for (uint i = 0; i < 3; i++) {
-        dst_vertices.vertices[index + i].position = vec4(positions[i] + vec2(float(index) / 3 / 64 - 0.5, 0), 0.0, 1.0);
-        dst_vertices.vertices[index + i].color = vec4(float(index) / 3 / 64, 1.0, 1.0, 1.0);
+        dst_vertices.vertices[index + i].position = vec4(positions[i] + vec2(float(index) / 3 / NUM_INSTANCES - 0.5, 0), 0.0, 1.0);
+        dst_vertices.vertices[index + i].color = vec4(float(index) / 3 / NUM_INSTANCES, 1.0, 1.0, 1.0);
     }
 }
