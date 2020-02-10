@@ -35,6 +35,7 @@ impl Default for DrawIndirectCommand {
 }
 
 const MAX_VERTEX_SIZE: wgpu::BufferAddress = 8192;
+const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
 struct TestApp {
     render_pipeline: wgpu::RenderPipeline,
@@ -47,6 +48,8 @@ struct TestApp {
     compute_uniforms_bind_group: wgpu::BindGroup,
     compute_src_bind_group: wgpu::BindGroup,
     compute_dst_bind_group: wgpu::BindGroup,
+    depth_texture: wgpu::Texture,
+    depth_texture_view: wgpu::TextureView,
 }
 
 impl Application for TestApp {
@@ -262,6 +265,14 @@ impl Application for TestApp {
                 ],
             });
 
+        let depth_texture =
+            ctx.device.create_texture(&wgpu::TextureDescriptor {
+                format: DEPTH_FORMAT,
+                usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT,
+                ..ctx.sc_desc.to_texture_desc()
+            });
+        let depth_texture_view = depth_texture.create_default_view();
+
         let render_pipeline_layout = ctx.device.create_pipeline_layout(
             &wgpu::PipelineLayoutDescriptor {
                 bind_group_layouts: &[],
@@ -293,7 +304,15 @@ impl Application for TestApp {
                     write_mask: wgpu::ColorWrite::ALL,
                 }],
                 primitive_topology: wgpu::PrimitiveTopology::TriangleList,
-                depth_stencil_state: None,
+                depth_stencil_state: Some(wgpu::DepthStencilStateDescriptor {
+                    format: DEPTH_FORMAT,
+                    depth_write_enabled: true,
+                    depth_compare: wgpu::CompareFunction::Less,
+                    stencil_front: wgpu::StencilStateFaceDescriptor::IGNORE,
+                    stencil_back: wgpu::StencilStateFaceDescriptor::IGNORE,
+                    stencil_read_mask: 0,
+                    stencil_write_mask: 0,
+                }),
                 index_format: wgpu::IndexFormat::Uint16,
                 vertex_buffers: &[mesh4::Vertex4::desc()],
                 sample_count: 1,
@@ -313,10 +332,20 @@ impl Application for TestApp {
             compute_uniforms_bind_group,
             compute_src_bind_group,
             compute_dst_bind_group,
+            depth_texture,
+            depth_texture_view,
         }
     }
 
-    fn resize(&mut self, _ctx: &mut Ctx) {}
+    fn resize(&mut self, ctx: &mut Ctx) {
+        self.depth_texture =
+            ctx.device.create_texture(&wgpu::TextureDescriptor {
+                format: DEPTH_FORMAT,
+                usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT,
+                ..ctx.sc_desc.to_texture_desc()
+            });
+        self.depth_texture_view = self.depth_texture.create_default_view();
+    }
 
     fn on_event(&mut self, _ctx: &mut Ctx, event: WindowEvent) {
         match event {
@@ -379,7 +408,17 @@ impl Application for TestApp {
                             },
                         },
                     ],
-                    depth_stencil_attachment: None,
+                    depth_stencil_attachment: Some(
+                        wgpu::RenderPassDepthStencilAttachmentDescriptor {
+                            attachment: &self.depth_texture_view,
+                            depth_load_op: wgpu::LoadOp::Clear,
+                            depth_store_op: wgpu::StoreOp::Store,
+                            clear_depth: 1.0,
+                            stencil_load_op: wgpu::LoadOp::Clear,
+                            stencil_store_op: wgpu::StoreOp::Store,
+                            clear_stencil: 0,
+                        },
+                    ),
                 });
 
             render_pass.set_pipeline(&self.render_pipeline);
