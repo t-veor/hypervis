@@ -136,6 +136,7 @@ pub fn tesseract(device: &wgpu::Device, size: f32) -> Mesh4 {
         .create_buffer_mapped(
             vertices.len(),
             wgpu::BufferUsage::COPY_SRC
+                | wgpu::BufferUsage::COPY_DST
                 | wgpu::BufferUsage::STORAGE
                 | wgpu::BufferUsage::STORAGE_READ,
         )
@@ -144,6 +145,7 @@ pub fn tesseract(device: &wgpu::Device, size: f32) -> Mesh4 {
         .create_buffer_mapped(
             indices.len(),
             wgpu::BufferUsage::COPY_SRC
+                | wgpu::BufferUsage::COPY_DST
                 | wgpu::BufferUsage::STORAGE
                 | wgpu::BufferUsage::STORAGE_READ,
         )

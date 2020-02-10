@@ -183,13 +183,17 @@ impl Application for TestApp {
                 1,
                 wgpu::BufferUsage::INDIRECT
                     | wgpu::BufferUsage::STORAGE
-                    | wgpu::BufferUsage::COPY_DST,
+                    | wgpu::BufferUsage::COPY_DST
+                    | wgpu::BufferUsage::MAP_READ,
             )
             .fill_from_slice(&[DrawIndirectCommand::default()]);
 
         let dst_vertices = ctx.device.create_buffer(&wgpu::BufferDescriptor {
-            size: MAX_VERTEX_SIZE,
-            usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::VERTEX,
+            size: MAX_VERTEX_SIZE
+                * std::mem::size_of::<mesh4::Vertex4>() as wgpu::BufferAddress,
+            usage: wgpu::BufferUsage::STORAGE
+                | wgpu::BufferUsage::VERTEX
+                | wgpu::BufferUsage::MAP_READ,
         });
 
         let compute_uniforms_bind_group =
@@ -250,7 +254,9 @@ impl Application for TestApp {
                         binding: 1,
                         resource: wgpu::BindingResource::Buffer {
                             buffer: &dst_vertices,
-                            range: 0..MAX_VERTEX_SIZE,
+                            range: 0..MAX_VERTEX_SIZE
+                                * std::mem::size_of::<mesh4::Vertex4>()
+                                    as wgpu::BufferAddress,
                         },
                     },
                 ],
@@ -353,7 +359,7 @@ impl Application for TestApp {
             );
             compute_pass.set_bind_group(1, &self.compute_src_bind_group, &[]);
             compute_pass.set_bind_group(2, &self.compute_dst_bind_group, &[]);
-            compute_pass.dispatch(1, 1, 1);
+            compute_pass.dispatch(self.mesh.simplex_count, 1, 1);
         }
 
         {
@@ -382,6 +388,28 @@ impl Application for TestApp {
         }
 
         ctx.queue.submit(&[encoder.finish()]);
+
+        /*
+        self.draw_indirect_command.map_read_async(
+            0,
+            std::mem::size_of::<DrawIndirectCommand>() as wgpu::BufferAddress,
+            |result: wgpu::BufferMapAsyncResult<&[DrawIndirectCommand]>| {
+                if let Ok(e) = result {
+                    println!("{:?}", e.data);
+                }
+            },
+        );
+
+        self.dst_vertices.map_read_async(
+            0,
+            288 * std::mem::size_of::<mesh4::Vertex4>() as wgpu::BufferAddress,
+            |result: wgpu::BufferMapAsyncResult<&[mesh4::Vertex4]>| {
+                if let Ok(e) = result {
+                    println!("{:?}", e.data);
+                }
+            },
+        );
+        */
     }
 }
 
