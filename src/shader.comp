@@ -16,35 +16,36 @@ struct DrawIndirectCommand {
 
 layout(set = 0, binding = 0) uniform CutPlane {
     vec4 normal;
-    float distance;
-} cut_plane;
+    vec4 base_point;
+    mat4 proj_matrix;
+};
 
 layout(set = 1, binding = 0) uniform SimplexCount {
-    uint count;
-} simplex_count;
+    uint simplex_count;
+};
 
 layout(set = 1, binding = 1) buffer SrcVertices {
-    Vertex4 vertices[];
-} src_vertices;
+    Vertex4 src_vertices[];
+};
 
 layout(set = 1, binding = 2) buffer SrcIndices {
-    uint indices[];
-} src_indices;
+    uint src_indices[];
+};
 
 layout(set = 2, binding = 0) buffer DrawCommand {
     DrawIndirectCommand command;
-} dst_command;
+};
 
 layout(set = 2, binding = 1) buffer DstVertices {
-    Vertex4 vertices[];
-} dst_vertices;
+    Vertex4 dst_vertices[];
+};
 
-bool cut_line_seg(vec4 start, vec4 end, out vec4 intersection, out float t) {
+bool cut_line_seg(vec4 start, vec4 end, vec4 normal, float distance, out vec4 intersection, out float t) {
     vec4 b = end - start;
-    float z = dot(b, cut_plane.normal);
+    float z = dot(b, normal);
 
     if (z != 0.) {
-        t = (cut_plane.distance - dot(start, cut_plane.normal)) / z;
+        t = (distance - dot(start, normal)) / z;
         if (0. < t && t < 1.) {
             intersection = start + t * b;
             return true;
@@ -56,25 +57,44 @@ bool cut_line_seg(vec4 start, vec4 end, out vec4 intersection, out float t) {
     return false;
 }
 
+vec4 project(vec4 x) {
+    return vec4((proj_matrix * (x - base_point)).xyz, 1.0);
+}
+
 void main() {
     uint index = gl_GlobalInvocationID.x;
-    if (index > simplex_count.count) {
+    if (index > simplex_count) {
         return;
     }
 
-    Vertex4 a = src_vertices.vertices[src_indices.indices[index * 4 + 0]];
-    Vertex4 b = src_vertices.vertices[src_indices.indices[index * 4 + 1]];
-    Vertex4 c = src_vertices.vertices[src_indices.indices[index * 4 + 2]];
-    Vertex4 d = src_vertices.vertices[src_indices.indices[index * 4 + 3]];
+    float cut_plane_distance = dot(base_point, normal);
 
-    Vertex4 result_vertices[6];
+    Vertex4 a = src_vertices[src_indices[index * 4 + 0]];
+    Vertex4 b = src_vertices[src_indices[index * 4 + 1]];
+    Vertex4 c = src_vertices[src_indices[index * 4 + 2]];
+    Vertex4 d = src_vertices[src_indices[index * 4 + 3]];
+
+    Vertex4 result_vertices[4];
     uint emitted_vertices = 0;
     vec4 intersection;
     float t = 0.;
 
+#define IN_PLANE(x) do { \
+        if (dot((x).position, normal) == cut_plane_distance) { \
+            result_vertices[emitted_vertices].position = project((x).position); \
+            result_vertices[emitted_vertices].color = (x).color; \
+            emitted_vertices++; \
+        } \
+    } while(false)
+
+    IN_PLANE(a);
+    IN_PLANE(b);
+    IN_PLANE(c);
+    IN_PLANE(d);
+
 #define DETECT_INTERSECTION(x, y) do { \
-        if (cut_line_seg((x).position, (y).position, intersection, t)) { \
-            result_vertices[emitted_vertices].position = intersection; \
+        if (emitted_vertices < 4 && cut_line_seg((x).position, (y).position, normal, cut_plane_distance, intersection, t)) { \
+            result_vertices[emitted_vertices].position = project(intersection); \
             result_vertices[emitted_vertices].color = mix((x).color, (y).color, t); \
             emitted_vertices++; \
         } \
@@ -88,12 +108,12 @@ void main() {
     DETECT_INTERSECTION(c, d);
 
 #define EMIT_TRIANGLE(i, a, b, c) do { \
-        dst_vertices.vertices[i++] = result_vertices[a]; \
-        dst_vertices.vertices[i++] = result_vertices[b]; \
-        dst_vertices.vertices[i++] = result_vertices[c]; \
-        dst_vertices.vertices[i++] = result_vertices[a]; \
-        dst_vertices.vertices[i++] = result_vertices[c]; \
-        dst_vertices.vertices[i++] = result_vertices[b]; \
+        dst_vertices[i++] = result_vertices[a]; \
+        dst_vertices[i++] = result_vertices[b]; \
+        dst_vertices[i++] = result_vertices[c]; \
+        dst_vertices[i++] = result_vertices[a]; \
+        dst_vertices[i++] = result_vertices[c]; \
+        dst_vertices[i++] = result_vertices[b]; \
     } while(false)
 
     if (emitted_vertices < 3) {
@@ -103,12 +123,12 @@ void main() {
     else if (emitted_vertices == 3)
     {
         // emit a triangle
-        uint i = atomicAdd(dst_command.command.vertex_count, 6);
+        uint i = atomicAdd(command.vertex_count, 6);
         EMIT_TRIANGLE(i, 0, 1, 2);
     }
     else {
         // emit a tetrahedron
-        uint i = atomicAdd(dst_command.command.vertex_count, 24);
+        uint i = atomicAdd(command.vertex_count, 24);
         EMIT_TRIANGLE(i, 0, 1, 2);
         EMIT_TRIANGLE(i, 0, 2, 3);
         EMIT_TRIANGLE(i, 0, 1, 3);

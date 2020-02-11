@@ -2,6 +2,7 @@ mod context;
 mod mesh4;
 
 use anyhow::Result;
+use nalgebra as na;
 use winit::event::WindowEvent;
 use zerocopy::{AsBytes, FromBytes};
 
@@ -10,8 +11,15 @@ use context::{Application, Ctx};
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 struct CutPlane {
-    normal: [f32; 4],
-    distance: f32,
+    normal: na::Vector4<f32>,
+    base_point: na::Vector4<f32>,
+    proj_matrix: na::Matrix4<f32>,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+struct ViewProjection {
+    view_proj: na::Matrix4<f32>,
 }
 
 #[repr(C)]
@@ -50,6 +58,9 @@ struct TestApp {
     compute_dst_bind_group: wgpu::BindGroup,
     depth_texture: wgpu::Texture,
     depth_texture_view: wgpu::TextureView,
+    view_proj: ViewProjection,
+    view_proj_buffer: wgpu::Buffer,
+    vertex_bind_group: wgpu::BindGroup,
 }
 
 impl Application for TestApp {
@@ -158,8 +169,14 @@ impl Application for TestApp {
         );
 
         let cut_plane = CutPlane {
-            normal: [0.0, 0.0, 0.0, 1.0],
-            distance: 0.5,
+            normal: na::Vector4::new(0.5, 0.5, 0.5, 0.5),
+            base_point: na::Vector4::new(0.5, 0.5, 0.5, 0.5),
+            proj_matrix: na::Matrix4::from_rows(&[
+                na::RowVector4::new(0.5, 0.5, -0.5, -0.5),
+                na::RowVector4::new(0.5, -0.5, 0.5, -0.5),
+                na::RowVector4::new(0.5, -0.5, -0.5, 0.5),
+                na::RowVector4::new(0.0, 0.0, 0.0, 0.0),
+            ]),
         };
 
         let cut_plane_buffer = ctx
@@ -265,6 +282,39 @@ impl Application for TestApp {
                 ],
             });
 
+        #[cfg_attr(rustfmt, rustfmt_skip)]
+        let OPENGL_TO_WGPU_MATRIX: na::Matrix4<f32> = na::Matrix4::new(
+            1.0, 0.0, 0.0, 0.0,
+            0.0, -1.0, 0.0, 0.0,
+            0.0, 0.0, 0.5, 0.0,
+            0.0, 0.0, 0.5, 1.0,
+        );
+
+        let view_proj = ViewProjection {
+            view_proj: OPENGL_TO_WGPU_MATRIX
+                * na::Perspective3::new(
+                    ctx.sc_desc.width as f32 / ctx.sc_desc.height as f32,
+                    45.0,
+                    0.1,
+                    1000.0,
+                )
+                .as_matrix()
+                * na::Isometry3::look_at_rh(
+                    &na::Point3::new(1.0, 1.0, -2.0),
+                    &na::Point3::new(0.0, 0.0, 0.0),
+                    &na::Vector3::y(),
+                )
+                .to_homogeneous(),
+        };
+
+        let view_proj_buffer = ctx
+            .device
+            .create_buffer_mapped(
+                1,
+                wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
+            )
+            .fill_from_slice(&[view_proj]);
+
         let depth_texture =
             ctx.device.create_texture(&wgpu::TextureDescriptor {
                 format: DEPTH_FORMAT,
@@ -273,9 +323,32 @@ impl Application for TestApp {
             });
         let depth_texture_view = depth_texture.create_default_view();
 
+        let vertex_bind_group_layout = ctx.device.create_bind_group_layout(
+            &wgpu::BindGroupLayoutDescriptor {
+                bindings: &[wgpu::BindGroupLayoutBinding {
+                    binding: 0,
+                    visibility: wgpu::ShaderStage::VERTEX,
+                    ty: wgpu::BindingType::UniformBuffer { dynamic: false },
+                }],
+            },
+        );
+
+        let vertex_bind_group =
+            ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                layout: &vertex_bind_group_layout,
+                bindings: &[wgpu::Binding {
+                    binding: 0,
+                    resource: wgpu::BindingResource::Buffer {
+                        buffer: &view_proj_buffer,
+                        range: 0..std::mem::size_of::<ViewProjection>()
+                            as wgpu::BufferAddress,
+                    },
+                }],
+            });
+
         let render_pipeline_layout = ctx.device.create_pipeline_layout(
             &wgpu::PipelineLayoutDescriptor {
-                bind_group_layouts: &[],
+                bind_group_layouts: &[&vertex_bind_group_layout],
             },
         );
 
@@ -334,6 +407,9 @@ impl Application for TestApp {
             compute_dst_bind_group,
             depth_texture,
             depth_texture_view,
+            view_proj,
+            view_proj_buffer,
+            vertex_bind_group,
         }
     }
 
@@ -423,6 +499,7 @@ impl Application for TestApp {
 
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_vertex_buffers(0, &[(&self.dst_vertices, 0)]);
+            render_pass.set_bind_group(0, &self.vertex_bind_group, &[]);
             render_pass.draw_indirect(&self.draw_indirect_command, 0);
         }
 
