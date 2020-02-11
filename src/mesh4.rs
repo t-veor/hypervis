@@ -1,4 +1,3 @@
-use itertools::Itertools;
 use zerocopy::{AsBytes, FromBytes};
 
 #[repr(C)]
@@ -30,35 +29,27 @@ impl Vertex4 {
     }
 }
 
-fn cube<I>(
+fn cube(
     size: f32,
-    x: &I,
-    y: &I,
-    z: &I,
-    w: &I,
+    fixed_axis: usize,
+    fixed_value: f32,
     color: [f32; 4],
     vertices: &mut Vec<Vertex4>,
     indices: &mut Vec<u32>,
-) where
-    I: Iterator<Item = i32> + Clone,
-{
+) {
     let vertex_size = vertices.len() as u32;
 
-    let it = x
-        .clone()
-        .cartesian_product(y.clone())
-        .cartesian_product(z.clone())
-        .cartesian_product(w.clone());
-    for (((x, y), z), w) in it {
-        vertices.push(Vertex4 {
-            position: [
-                (x as f32) * size,
-                (y as f32) * size,
-                (z as f32) * size,
-                (w as f32) * size,
-            ],
-            color,
-        });
+    for mut i in 0..8 {
+        let mut position = [0f32; 4];
+        for j in 0..4 {
+            if j == fixed_axis {
+                position[j] = fixed_value * size;
+            } else {
+                position[j] = (i & 1) as f32 * size;
+                i /= 2;
+            }
+        }
+        vertices.push(Vertex4 { position, color });
     }
 
     #[cfg_attr(rustfmt, rustfmt_skip)]
@@ -90,26 +81,22 @@ fn tesseract_verts(size: f32) -> (Vec<Vertex4>, Vec<u32>) {
     let mut vertices = Vec::new();
     let mut indices = Vec::new();
 
-    let v = &(0..2);
-    let a = &(0..1);
-    let b = &(1..2);
-
     // ana-side cube
-    cube(x, v, v, v, a, colors[0], &mut vertices, &mut indices);
+    cube(x, 3, 0.0, colors[0], &mut vertices, &mut indices);
     // kata-side cube
-    cube(x, v, v, v, b, colors[1], &mut vertices, &mut indices);
+    cube(x, 3, 1.0, colors[1], &mut vertices, &mut indices);
     // top-side cube
-    cube(x, v, v, a, v, colors[2], &mut vertices, &mut indices);
+    cube(x, 2, 0.0, colors[2], &mut vertices, &mut indices);
     // bottom-side cube
-    cube(x, v, v, b, v, colors[3], &mut vertices, &mut indices);
+    cube(x, 2, 1.0, colors[3], &mut vertices, &mut indices);
     // front-side cube
-    cube(x, v, a, v, v, colors[4], &mut vertices, &mut indices);
+    cube(x, 1, 0.0, colors[4], &mut vertices, &mut indices);
     // back-side cube
-    cube(x, v, b, v, v, colors[5], &mut vertices, &mut indices);
+    cube(x, 1, 1.0, colors[5], &mut vertices, &mut indices);
     // right-side cube
-    cube(x, a, v, v, v, colors[6], &mut vertices, &mut indices);
+    cube(x, 0, 0.0, colors[6], &mut vertices, &mut indices);
     // left-side cube
-    cube(x, b, v, v, v, colors[7], &mut vertices, &mut indices);
+    cube(x, 0, 1.0, colors[7], &mut vertices, &mut indices);
 
     (vertices, indices)
 }
