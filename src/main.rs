@@ -22,6 +22,35 @@ struct ViewProjection {
     view_proj: na::Matrix4<f32>,
 }
 
+impl ViewProjection {
+    pub fn new(ctx: &Ctx) -> Self {
+        #[cfg_attr(rustfmt, rustfmt_skip)]
+        let opengl_to_wgpu_matrix = na::Matrix4::new(
+            1.0, 0.0, 0.0, 0.0,
+            0.0, -1.0, 0.0, 0.0,
+            0.0, 0.0, 0.5, 0.0,
+            0.0, 0.0, 0.5, 1.0,
+        );
+
+        Self {
+            view_proj: opengl_to_wgpu_matrix
+                * na::Perspective3::new(
+                    ctx.sc_desc.width as f32 / ctx.sc_desc.height as f32,
+                    45.0,
+                    0.1,
+                    1000.0,
+                )
+                .as_matrix()
+                * na::Isometry3::look_at_rh(
+                    &na::Point3::new(1.0, 1.0, -2.0),
+                    &na::Point3::new(0.0, 0.0, 0.0),
+                    &na::Vector3::y(),
+                )
+                .to_homogeneous(),
+        }
+    }
+}
+
 #[repr(C)]
 #[derive(Debug, Clone, Copy, FromBytes, AsBytes)]
 struct DrawIndirectCommand {
@@ -50,6 +79,7 @@ struct TestApp {
     compute_pipeline: wgpu::ComputePipeline,
     mesh: mesh4::Mesh4,
     cut_plane: CutPlane,
+    cut_plane_buffer: wgpu::Buffer,
     simplex_count: wgpu::Buffer,
     draw_indirect_command: wgpu::Buffer,
     dst_vertices: wgpu::Buffer,
@@ -61,6 +91,7 @@ struct TestApp {
     view_proj: ViewProjection,
     view_proj_buffer: wgpu::Buffer,
     vertex_bind_group: wgpu::BindGroup,
+    frames: usize,
 }
 
 impl Application for TestApp {
@@ -170,7 +201,7 @@ impl Application for TestApp {
 
         let cut_plane = CutPlane {
             normal: na::Vector4::new(0.5, 0.5, 0.5, 0.5),
-            base_point: na::Vector4::new(0.5, 0.5, 0.5, 0.5),
+            base_point: na::Vector4::zeros(),
             proj_matrix: na::Matrix4::from_rows(&[
                 na::RowVector4::new(0.5, 0.5, -0.5, -0.5),
                 na::RowVector4::new(0.5, -0.5, 0.5, -0.5),
@@ -282,30 +313,7 @@ impl Application for TestApp {
                 ],
             });
 
-        #[cfg_attr(rustfmt, rustfmt_skip)]
-        let OPENGL_TO_WGPU_MATRIX: na::Matrix4<f32> = na::Matrix4::new(
-            1.0, 0.0, 0.0, 0.0,
-            0.0, -1.0, 0.0, 0.0,
-            0.0, 0.0, 0.5, 0.0,
-            0.0, 0.0, 0.5, 1.0,
-        );
-
-        let view_proj = ViewProjection {
-            view_proj: OPENGL_TO_WGPU_MATRIX
-                * na::Perspective3::new(
-                    ctx.sc_desc.width as f32 / ctx.sc_desc.height as f32,
-                    45.0,
-                    0.1,
-                    1000.0,
-                )
-                .as_matrix()
-                * na::Isometry3::look_at_rh(
-                    &na::Point3::new(1.0, 1.0, -2.0),
-                    &na::Point3::new(0.0, 0.0, 0.0),
-                    &na::Vector3::y(),
-                )
-                .to_homogeneous(),
-        };
+        let view_proj = ViewProjection::new(ctx);
 
         let view_proj_buffer = ctx
             .device
@@ -365,7 +373,7 @@ impl Application for TestApp {
                 }),
                 rasterization_state: Some(wgpu::RasterizationStateDescriptor {
                     front_face: wgpu::FrontFace::Ccw,
-                    cull_mode: wgpu::CullMode::Back,
+                    cull_mode: wgpu::CullMode::None,
                     depth_bias: 0,
                     depth_bias_slope_scale: 0.0,
                     depth_bias_clamp: 0.0,
@@ -399,6 +407,7 @@ impl Application for TestApp {
             compute_pipeline,
             mesh,
             cut_plane,
+            cut_plane_buffer,
             draw_indirect_command,
             dst_vertices,
             simplex_count,
@@ -410,10 +419,32 @@ impl Application for TestApp {
             view_proj,
             view_proj_buffer,
             vertex_bind_group,
+            frames: 0,
         }
     }
 
     fn resize(&mut self, ctx: &mut Ctx) {
+        let mut encoder = ctx.device.create_command_encoder(
+            &wgpu::CommandEncoderDescriptor { todo: 0 },
+        );
+        // update the projection
+        {
+            self.view_proj = ViewProjection::new(ctx);
+            let staging_buffer = ctx
+                .device
+                .create_buffer_mapped(1, wgpu::BufferUsage::COPY_SRC)
+                .fill_from_slice(&[self.view_proj]);
+            encoder.copy_buffer_to_buffer(
+                &staging_buffer,
+                0,
+                &self.view_proj_buffer,
+                0,
+                std::mem::size_of::<ViewProjection>()
+                    as wgpu::BufferAddress,
+            );
+        }
+        ctx.queue.submit(&[encoder.finish()]);
+
         self.depth_texture =
             ctx.device.create_texture(&wgpu::TextureDescriptor {
                 format: DEPTH_FORMAT,
@@ -436,6 +467,24 @@ impl Application for TestApp {
         let mut encoder = ctx.device.create_command_encoder(
             &wgpu::CommandEncoderDescriptor { todo: 0 },
         );
+
+        // update the cut plane
+        {
+            let scale = (self.frames % 600) as f32 / 600.0;
+            self.cut_plane.base_point = na::Vector4::new(scale, scale, scale, scale);
+            let staging_buffer = ctx
+                .device
+                .create_buffer_mapped(1, wgpu::BufferUsage::COPY_SRC)
+                .fill_from_slice(&[self.cut_plane]);
+            encoder.copy_buffer_to_buffer(
+                &staging_buffer,
+                0,
+                &self.cut_plane_buffer,
+                0,
+                std::mem::size_of::<CutPlane>()
+                    as wgpu::BufferAddress,
+            );
+        }
 
         // reset the indirect command buffer
         {
@@ -504,6 +553,8 @@ impl Application for TestApp {
         }
 
         ctx.queue.submit(&[encoder.finish()]);
+
+        self.frames += 1;
 
         /*
         self.draw_indirect_command.map_read_async(

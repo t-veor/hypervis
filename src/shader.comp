@@ -111,9 +111,6 @@ void main() {
         dst_vertices[i++] = result_vertices[a]; \
         dst_vertices[i++] = result_vertices[b]; \
         dst_vertices[i++] = result_vertices[c]; \
-        dst_vertices[i++] = result_vertices[a]; \
-        dst_vertices[i++] = result_vertices[c]; \
-        dst_vertices[i++] = result_vertices[b]; \
     } while(false)
 
     if (emitted_vertices < 3) {
@@ -123,12 +120,12 @@ void main() {
     else if (emitted_vertices == 3)
     {
         // emit a triangle
-        uint i = atomicAdd(command.vertex_count, 6);
+        uint i = atomicAdd(command.vertex_count, 3);
         EMIT_TRIANGLE(i, 0, 1, 2);
     }
     else {
         // emit a tetrahedron
-        uint i = atomicAdd(command.vertex_count, 24);
+        uint i = atomicAdd(command.vertex_count, 12);
         EMIT_TRIANGLE(i, 0, 1, 2);
         EMIT_TRIANGLE(i, 0, 2, 3);
         EMIT_TRIANGLE(i, 0, 1, 3);
