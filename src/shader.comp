@@ -20,6 +20,10 @@ layout(set = 0, binding = 0) uniform CutPlane {
     mat4 proj_matrix;
 };
 
+layout(set = 0, binding = 1) uniform RotationMatrix {
+    mat4 rotation_matrix;
+};
+
 layout(set = 1, binding = 0) uniform SimplexCount {
     uint simplex_count;
 };
@@ -73,6 +77,10 @@ void main() {
     Vertex4 b = src_vertices[src_indices[index * 4 + 1]];
     Vertex4 c = src_vertices[src_indices[index * 4 + 2]];
     Vertex4 d = src_vertices[src_indices[index * 4 + 3]];
+    a.position = rotation_matrix * a.position;
+    b.position = rotation_matrix * b.position;
+    c.position = rotation_matrix * c.position;
+    d.position = rotation_matrix * d.position;
 
     Vertex4 result_vertices[4];
     uint emitted_vertices = 0;

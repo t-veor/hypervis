@@ -1,3 +1,4 @@
+mod alg;
 mod context;
 mod mesh4;
 
@@ -91,6 +92,9 @@ struct TestApp {
     view_proj: ViewProjection,
     view_proj_buffer: wgpu::Buffer,
     vertex_bind_group: wgpu::BindGroup,
+    angular_vel: alg::Bivec4,
+    rotor: alg::Rotor4,
+    rotation_matrix_buffer: wgpu::Buffer,
     frames: usize,
 }
 
@@ -120,11 +124,18 @@ impl Application for TestApp {
 
         let compute_uniform_layout = ctx.device.create_bind_group_layout(
             &wgpu::BindGroupLayoutDescriptor {
-                bindings: &[wgpu::BindGroupLayoutBinding {
-                    binding: 0,
-                    visibility: wgpu::ShaderStage::COMPUTE,
-                    ty: wgpu::BindingType::UniformBuffer { dynamic: false },
-                }],
+                bindings: &[
+                    wgpu::BindGroupLayoutBinding {
+                        binding: 0,
+                        visibility: wgpu::ShaderStage::COMPUTE,
+                        ty: wgpu::BindingType::UniformBuffer { dynamic: false },
+                    },
+                    wgpu::BindGroupLayoutBinding {
+                        binding: 1,
+                        visibility: wgpu::ShaderStage::COMPUTE,
+                        ty: wgpu::BindingType::UniformBuffer { dynamic: false },
+                    },
+                ],
             },
         );
 
@@ -218,6 +229,18 @@ impl Application for TestApp {
             )
             .fill_from_slice(&[cut_plane]);
 
+        let rotor = alg::Rotor4::identity();
+        let angular_vel = alg::Bivec4::new(0.0, 1.0, 0.0, 0.0, 0.0, 0.0);
+        let rotation_matrix = rotor.to_matrix();
+
+        let rotation_matrix_buffer = ctx
+            .device
+            .create_buffer_mapped(
+                1,
+                wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
+            )
+            .fill_from_slice(&[rotation_matrix]);
+
         let mesh = mesh4::tesseract(&ctx.device, 1.0);
 
         let simplex_count = ctx
@@ -250,14 +273,24 @@ impl Application for TestApp {
         let compute_uniforms_bind_group =
             ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
                 layout: &compute_uniform_layout,
-                bindings: &[wgpu::Binding {
-                    binding: 0,
-                    resource: wgpu::BindingResource::Buffer {
-                        buffer: &cut_plane_buffer,
-                        range: 0..std::mem::size_of_val(&cut_plane)
-                            as wgpu::BufferAddress,
+                bindings: &[
+                    wgpu::Binding {
+                        binding: 0,
+                        resource: wgpu::BindingResource::Buffer {
+                            buffer: &cut_plane_buffer,
+                            range: 0..std::mem::size_of_val(&cut_plane)
+                                as wgpu::BufferAddress,
+                        },
                     },
-                }],
+                    wgpu::Binding {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Buffer {
+                            buffer: &rotation_matrix_buffer,
+                            range: 0..std::mem::size_of_val(&rotation_matrix)
+                                as wgpu::BufferAddress,
+                        },
+                    },
+                ],
             });
 
         let compute_src_bind_group =
@@ -419,6 +452,9 @@ impl Application for TestApp {
             view_proj,
             view_proj_buffer,
             vertex_bind_group,
+            rotor,
+            angular_vel,
+            rotation_matrix_buffer,
             frames: 0,
         }
     }
@@ -439,8 +475,7 @@ impl Application for TestApp {
                 0,
                 &self.view_proj_buffer,
                 0,
-                std::mem::size_of::<ViewProjection>()
-                    as wgpu::BufferAddress,
+                std::mem::size_of::<ViewProjection>() as wgpu::BufferAddress,
             );
         }
         ctx.queue.submit(&[encoder.finish()]);
@@ -469,9 +504,11 @@ impl Application for TestApp {
         );
 
         // update the cut plane
+        /*
         {
             let scale = (self.frames % 600) as f32 / 600.0;
-            self.cut_plane.base_point = na::Vector4::new(scale, scale, scale, scale);
+            self.cut_plane.base_point =
+                na::Vector4::new(scale, scale, scale, scale);
             let staging_buffer = ctx
                 .device
                 .create_buffer_mapped(1, wgpu::BufferUsage::COPY_SRC)
@@ -481,8 +518,27 @@ impl Application for TestApp {
                 0,
                 &self.cut_plane_buffer,
                 0,
-                std::mem::size_of::<CutPlane>()
-                    as wgpu::BufferAddress,
+                std::mem::size_of::<CutPlane>() as wgpu::BufferAddress,
+            );
+        }
+        */
+
+        // Update the rotation
+        {
+            let dt = 1f32 / 60f32;
+            self.rotor.update(&(dt * self.angular_vel.clone()));
+            // println!("{:?}", self.rotor);
+            let rotation_matrix = self.rotor.to_matrix();
+            let staging_buffer = ctx
+                .device
+                .create_buffer_mapped(1, wgpu::BufferUsage::COPY_SRC)
+                .fill_from_slice(&[rotation_matrix]);
+            encoder.copy_buffer_to_buffer(
+                &staging_buffer,
+                0,
+                &self.rotation_matrix_buffer,
+                0,
+                std::mem::size_of_val(&rotation_matrix) as wgpu::BufferAddress,
             );
         }
 
