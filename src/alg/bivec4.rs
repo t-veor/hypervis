@@ -61,7 +61,7 @@ impl Bivec4 {
             - b.yw * c.yw
             - b.zw * c.zw;
 
-        let b = Bivec4 {
+        let d = Bivec4 {
             xy: - b.xw * c.yw - b.xz * c.yz + b.yw * c.xw + b.yz * c.xz,
             xz: - b.xw * c.zw + b.xy * c.yz - b.yz * c.xy + b.zw * c.xw,
             xw:   b.xy * c.yw + b.xz * c.zw - b.yw * c.xy - b.zw * c.xz,
@@ -80,7 +80,7 @@ impl Bivec4 {
                 + b.zw * c.xy,
         };
 
-        (s, b, q)
+        (s, d, q)
     }
 }
 

@@ -24,7 +24,7 @@ impl Vec4 {
         let v = self;
 
         Vec4 {
-            x: -v.y * b.xy - v.z * b.xz - v.w * b.zw,
+            x: -v.y * b.xy - v.z * b.xz - v.w * b.xw,
             y: v.x * b.xy - v.z * b.yz - v.w * b.yw,
             z: v.x * b.xz + v.y * b.yz - v.w * b.zw,
             w: v.x * b.xw + v.y * b.yw + v.z * b.zw,

@@ -114,3 +114,35 @@ impl Default for Rotor4 {
         Self::identity()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deteriminant_always_one() {
+        let mut rotor = Rotor4::new(
+            1.0,
+            Bivec4::new(1.0, 0.0, 0.0, 0.0, 0.0, 1.0),
+            Quadvec4 { xyzw: 1.0 },
+        );
+        rotor.normalize();
+
+        println!(
+            "{:?} {} {}",
+            rotor,
+            rotor.to_matrix(),
+            rotor.to_matrix().determinant()
+        );
+    }
+
+    #[test]
+    fn what() {
+        let mut rotor = Rotor4::identity();
+        let bv = Bivec4::new(2.0, 0.0, 0.0, 0.0, 0.0, 2.0);
+        rotor.update(&bv);
+
+        println!("{:?}", rotor);
+        println!("{:?}", rotor.mul_bv(&bv));
+    }
+}

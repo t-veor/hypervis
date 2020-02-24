@@ -210,7 +210,7 @@ impl Application for TestApp {
             },
         );
 
-        let cut_plane = CutPlane {
+        let diagonal = CutPlane {
             normal: na::Vector4::new(0.5, 0.5, 0.5, 0.5),
             base_point: na::Vector4::zeros(),
             proj_matrix: na::Matrix4::from_rows(&[
@@ -221,6 +221,19 @@ impl Application for TestApp {
             ]),
         };
 
+        let orthogonal = CutPlane {
+            normal: na::Vector4::new(0.0, 0.0, 0.0, 1.0),
+            base_point: na::Vector4::zeros(),
+            proj_matrix: na::Matrix4::from_rows(&[
+                na::RowVector4::new(1.0, 0.0, 0.0, 0.0),
+                na::RowVector4::new(0.0, 1.0, 0.0, 0.0),
+                na::RowVector4::new(0.0, 0.0, 1.0, 0.0),
+                na::RowVector4::new(0.0, 0.0, 0.0, 0.0),
+            ]),
+        };
+
+        let cut_plane = orthogonal;
+
         let cut_plane_buffer = ctx
             .device
             .create_buffer_mapped(
@@ -230,7 +243,7 @@ impl Application for TestApp {
             .fill_from_slice(&[cut_plane]);
 
         let rotor = alg::Rotor4::identity();
-        let angular_vel = alg::Bivec4::new(0.0, 1.0, 0.0, 0.0, 0.0, 0.0);
+        let angular_vel = alg::Bivec4::new(1.0, 0.0, 0.0, 0.0, 0.0, 1.0);
         let rotation_matrix = rotor.to_matrix();
 
         let rotation_matrix_buffer = ctx
@@ -527,8 +540,9 @@ impl Application for TestApp {
         {
             let dt = 1f32 / 60f32;
             self.rotor.update(&(dt * self.angular_vel.clone()));
-            // println!("{:?}", self.rotor);
+            println!("{:?}", self.rotor);
             let rotation_matrix = self.rotor.to_matrix();
+            println!("{:?}", rotation_matrix.determinant());
             let staging_buffer = ctx
                 .device
                 .create_buffer_mapped(1, wgpu::BufferUsage::COPY_SRC)
