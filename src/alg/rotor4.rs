@@ -50,13 +50,29 @@ impl Rotor4 {
 
     pub fn update(&mut self, delta: &Bivec4) {
         let delta_r = self.mul_bv(delta);
-        self.s = self.s + 0.5 * delta_r.s;
-        self.b = self.b.clone() + 0.5 * delta_r.b;
-        self.q = self.q + 0.5 * delta_r.q;
+        self.s = self.s + -0.5 * delta_r.s;
+        self.b = self.b.clone() + -0.5 * delta_r.b;
+        self.q = self.q + -0.5 * delta_r.q;
         self.normalize();
     }
 
     pub fn normalize(&mut self) {
+        let neg_xyzw = self.b.xy * self.b.zw - self.b.xz * self.b.zw
+            + self.b.xw * self.b.yz;
+        let pos_xyzw = self.s * self.q.xyzw;
+
+        let neg_factor = neg_xyzw.abs().sqrt();
+        let pos_factor = pos_xyzw.abs().sqrt();
+
+        if neg_xyzw != 0.0
+            && pos_xyzw != 0.0
+            && neg_xyzw.signum() == pos_xyzw.signum()
+        {
+            self.s *= neg_factor;
+            self.b = pos_factor * self.b.clone();
+            self.q = neg_factor * self.q.clone();
+        }
+
         let inverse_mag = 1.0 / self.mag();
         self.s *= inverse_mag;
         self.b = inverse_mag * self.b.clone();
