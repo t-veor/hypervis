@@ -1,5 +1,7 @@
 #version 450
 
+#define EPSILON 0.000001
+
 layout (local_size_x = 1) in;
 
 struct Vertex4 {
@@ -48,9 +50,9 @@ bool cut_line_seg(vec4 start, vec4 end, vec4 normal, float distance, out vec4 in
     vec4 b = end - start;
     float z = dot(b, normal);
 
-    if (z != 0.) {
+    if (abs(z) > EPSILON) {
         t = (distance - dot(start, normal)) / z;
-        if (0. < t && t < 1.) {
+        if (EPSILON < t && t - 1 < -EPSILON) {
             intersection = start + t * b;
             return true;
         }
@@ -88,7 +90,7 @@ void main() {
     float t = 0.;
 
 #define IN_PLANE(x) do { \
-        if (dot((x).position, normal) == cut_plane_distance) { \
+        if (abs(dot((x).position, normal) - cut_plane_distance) < EPSILON) { \
             result_vertices[emitted_vertices].position = project((x).position); \
             result_vertices[emitted_vertices].color = (x).color; \
             emitted_vertices++; \
