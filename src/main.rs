@@ -243,7 +243,7 @@ impl Application for TestApp {
             .fill_from_slice(&[cut_plane]);
 
         let rotor = alg::Rotor4::identity();
-        let angular_vel = alg::Bivec4::new(1.0, 0.0, 0.0, 0.0, 0.0, 1.0);
+        let angular_vel = alg::Bivec4::new(1.0, -1.0, 0.0, 0.0, -1.0, 1.0);
         let rotation_matrix = rotor.to_matrix();
 
         let rotation_matrix_buffer = ctx

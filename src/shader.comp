@@ -52,7 +52,7 @@ bool cut_line_seg(vec4 start, vec4 end, vec4 normal, float distance, out vec4 in
 
     if (abs(z) > EPSILON) {
         t = (distance - dot(start, normal)) / z;
-        if (EPSILON < t && t - 1 < -EPSILON) {
+        if (-EPSILON < t && 1 - t > -EPSILON) {
             intersection = start + t * b;
             return true;
         }
@@ -89,19 +89,6 @@ void main() {
     vec4 intersection;
     float t = 0.;
 
-#define IN_PLANE(x) do { \
-        if (abs(dot((x).position, normal) - cut_plane_distance) < EPSILON) { \
-            result_vertices[emitted_vertices].position = project((x).position); \
-            result_vertices[emitted_vertices].color = (x).color; \
-            emitted_vertices++; \
-        } \
-    } while(false)
-
-    IN_PLANE(a);
-    IN_PLANE(b);
-    IN_PLANE(c);
-    IN_PLANE(d);
-
 #define DETECT_INTERSECTION(x, y) do { \
         if (emitted_vertices < 4 && cut_line_seg((x).position, (y).position, normal, cut_plane_distance, intersection, t)) { \
             result_vertices[emitted_vertices].position = project(intersection); \
@@ -111,8 +98,8 @@ void main() {
     } while(false)
 
     DETECT_INTERSECTION(a, b);
-    DETECT_INTERSECTION(a, c);
-    DETECT_INTERSECTION(a, d);
+    DETECT_INTERSECTION(c, a);
+    DETECT_INTERSECTION(d, a);
     DETECT_INTERSECTION(b, c);
     DETECT_INTERSECTION(b, d);
     DETECT_INTERSECTION(c, d);
