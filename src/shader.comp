@@ -3,6 +3,7 @@
 #define EPSILON 0.000001
 #define APPROX_ZERO(x) (abs(x) < EPSILON)
 #define APPROX_EQ(a, b) (abs((a) - (b)) < EPSILON)
+#define APPROX_VEC_EQ(a, b) (dot((a) - (b), (a) - (b)) < EPSILON)
 
 layout (local_size_x = 1) in;
 
@@ -87,7 +88,7 @@ void main() {
     d.position = rotation_matrix * d.position;
 
     // check to see if the tetrahedron is exactly in the cut plane
-    if (APPROX_EQ(dot(a.position, normal), cut_plane_distance) 
+    if (APPROX_EQ(dot(a.position, normal), cut_plane_distance)
         && APPROX_ZERO(dot(b.position - a.position, normal))
         && APPROX_ZERO(dot(c.position - a.position, normal))
         && APPROX_ZERO(dot(d.position - a.position, normal))) {
@@ -106,7 +107,7 @@ void main() {
         dst_vertices[i++] = a;
         dst_vertices[i++] = b;
         dst_vertices[i++] = d;
-        
+
         dst_vertices[i++] = a;
         dst_vertices[i++] = c;
         dst_vertices[i++] = d;
@@ -123,9 +124,18 @@ void main() {
 
 #define DETECT_INTERSECTION(x, y) do { \
         if (emitted_vertices < 4 && cut_line_seg((x).position, (y).position, normal, cut_plane_distance, intersection, t)) { \
-            result_vertices[emitted_vertices].position = project(intersection); \
-            result_vertices[emitted_vertices].color = mix((x).color, (y).color, t); \
-            emitted_vertices++; \
+            vec4 projected_intersection = project(intersection); \
+            for (int j = 0; j < 4; j++) { \
+                if (j == emitted_vertices) { \
+                    result_vertices[emitted_vertices].position = projected_intersection; \
+                    result_vertices[emitted_vertices].color = mix((x).color, (y).color, t); \
+                    emitted_vertices++; \
+                    break; \
+                } \
+                if (APPROX_VEC_EQ(projected_intersection, result_vertices[j].position)) { \
+                    break; \
+                } \
+            } \
         } \
     } while(false)
 

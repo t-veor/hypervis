@@ -245,10 +245,12 @@ impl Application for TestApp {
         let mut rotor = alg::Rotor4::identity();
         let angular_vel = alg::Bivec4::new(1.0, -1.0, 0.0, 0.0, -1.0, 1.0);
 
+        /*
         for _ in 0..377 {
             let dt = 1f32 / 60f32;
             rotor.update(&(dt * angular_vel.clone()));
         }
+        */
 
         let rotation_matrix = rotor.to_matrix();
 
@@ -545,14 +547,13 @@ impl Application for TestApp {
         */
 
         // Update the rotation
-        /*
-        {
+        if self.frames % 20 == 0 {
             println!("{}", self.frames);
             let dt = 1f32 / 60f32;
             self.rotor.update(&(dt * self.angular_vel.clone()));
-            // println!("{:?}", self.rotor);
+            println!("{:?}", self.rotor);
             let rotation_matrix = self.rotor.to_matrix();
-            // println!("{:?}", rotation_matrix.determinant());
+            println!("{}", rotation_matrix);
             let staging_buffer = ctx
                 .device
                 .create_buffer_mapped(1, wgpu::BufferUsage::COPY_SRC)
@@ -565,7 +566,6 @@ impl Application for TestApp {
                 std::mem::size_of_val(&rotation_matrix) as wgpu::BufferAddress,
             );
         }
-        */
 
         // reset the indirect command buffer
         {
