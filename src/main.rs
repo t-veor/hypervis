@@ -1,5 +1,6 @@
 mod alg;
 mod context;
+mod geometry;
 mod mesh4;
 
 use anyhow::Result;
@@ -72,7 +73,7 @@ impl Default for DrawIndirectCommand {
     }
 }
 
-const MAX_VERTEX_SIZE: wgpu::BufferAddress = 8192;
+const MAX_VERTEX_SIZE: wgpu::BufferAddress = 65536;
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
 struct TestApp {
@@ -223,7 +224,7 @@ impl Application for TestApp {
 
         let orthogonal = CutPlane {
             normal: na::Vector4::new(0.0, 0.0, 0.0, 1.0),
-            base_point: na::Vector4::zeros(),
+            base_point: na::Vector4::new(0.0, 0.0, 0.0, 0.5),
             proj_matrix: na::Matrix4::from_rows(&[
                 na::RowVector4::new(1.0, 0.0, 0.0, 0.0),
                 na::RowVector4::new(0.0, 1.0, 0.0, 0.0),
@@ -232,7 +233,7 @@ impl Application for TestApp {
             ]),
         };
 
-        let cut_plane = diagonal;
+        let cut_plane = orthogonal;
 
         let cut_plane_buffer = ctx
             .device
@@ -243,12 +244,14 @@ impl Application for TestApp {
             .fill_from_slice(&[cut_plane]);
 
         let mut rotor = alg::Rotor4::identity();
-        let angular_vel = alg::Bivec4::new(1.0, 0.0, 0.0, 0.0, 0.0, 1.0);
+        let angular_vel = alg::Bivec4::new(0.0, 0.0, 0.1, 0.0, 0.1, 0.1);
 
+        /*
         for _ in 0..214 {
             let dt = 1f32 / 60f32;
             rotor.update(&(dt * angular_vel.clone()));
         }
+        */
 
         let rotation_matrix = rotor.to_matrix();
 
@@ -262,7 +265,8 @@ impl Application for TestApp {
             )
             .fill_from_slice(&[rotation_matrix]);
 
-        let mesh = mesh4::tesseract(&ctx.device, 1.0);
+        let mesh = mesh4::cell_120(&ctx.device);
+        println!("{}", mesh.simplex_count);
 
         let simplex_count = ctx
             .device
@@ -524,12 +528,9 @@ impl Application for TestApp {
             &wgpu::CommandEncoderDescriptor { todo: 0 },
         );
 
-        // update the cut plane
-        /*
         {
-            let scale = (self.frames % 600) as f32 / 600.0;
-            self.cut_plane.base_point =
-                na::Vector4::new(scale, scale, scale, scale);
+            let scale = (self.frames % 600) as f32 / 600.0 * 2.0 - 1.0;
+            self.cut_plane.base_point = na::Vector4::new(0.0, 0.0, 0.0, scale);
             let staging_buffer = ctx
                 .device
                 .create_buffer_mapped(1, wgpu::BufferUsage::COPY_SRC)
@@ -542,16 +543,15 @@ impl Application for TestApp {
                 std::mem::size_of::<CutPlane>() as wgpu::BufferAddress,
             );
         }
-        */
 
         // Update the rotation
-        if false {
-            println!("{}", self.frames);
+        if true {
+            // println!("{}", self.frames);
             let dt = 1f32 / 60f32;
             self.rotor.update(&(dt * self.angular_vel.clone()));
-            println!("{:?}", self.rotor);
+            // println!("{:?}", self.rotor);
             let rotation_matrix = self.rotor.to_matrix();
-            println!("{}", rotation_matrix);
+            // println!("{}", rotation_matrix);
             let staging_buffer = ctx
                 .device
                 .create_buffer_mapped(1, wgpu::BufferUsage::COPY_SRC)
@@ -592,7 +592,11 @@ impl Application for TestApp {
             );
             compute_pass.set_bind_group(1, &self.compute_src_bind_group, &[]);
             compute_pass.set_bind_group(2, &self.compute_dst_bind_group, &[]);
-            compute_pass.dispatch(self.mesh.simplex_count, 1, 1);
+            compute_pass.dispatch(
+                (self.mesh.simplex_count as f64 / 256.0).ceil() as u32,
+                1,
+                1,
+            );
         }
 
         {

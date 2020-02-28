@@ -42,6 +42,7 @@ impl Ctx {
         let surface = wgpu::Surface::create(&window);
 
         let adapter = wgpu::Adapter::request(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::HighPerformance,
             ..Default::default()
         })
         .ok_or(anyhow!("Could not acquire adapter"))?;

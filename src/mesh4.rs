@@ -69,7 +69,7 @@ fn tesseract_verts(size: f32) -> (Vec<Vertex4>, Vec<u32>) {
 
     let colors = &[
         [1.0, 0.0, 0.0, 1.0], // ana-side cube
-        [0.0, 1.0, 1.0, 1.0], // kana-side cube
+        [0.0, 1.0, 1.0, 1.0], // kata-side cube
         [0.0, 1.0, 0.0, 1.0], // top-side cube
         [1.0, 0.0, 1.0, 1.0], // bottom-side cube
         [0.0, 0.0, 1.0, 1.0], // back-side cube
@@ -109,9 +109,11 @@ pub struct Mesh4 {
     pub simplex_count: u32,
 }
 
-pub fn tesseract(device: &wgpu::Device, size: f32) -> Mesh4 {
-    let (vertices, indices) = tesseract_verts(size);
-
+pub fn verts_to_mesh(
+    device: &wgpu::Device,
+    vertices: &Vec<Vertex4>,
+    indices: &Vec<u32>,
+) -> Mesh4 {
     let vertex_buffer_size = (vertices.len() * std::mem::size_of::<Vertex4>())
         as wgpu::BufferAddress;
     let index_buffer_size =
@@ -147,6 +149,21 @@ pub fn tesseract(device: &wgpu::Device, size: f32) -> Mesh4 {
     }
 }
 
+pub fn tesseract(device: &wgpu::Device, size: f32) -> Mesh4 {
+    let (vertices, indices) = tesseract_verts(size);
+    verts_to_mesh(device, &vertices, &indices)
+}
+
+pub fn cell_120(device: &wgpu::Device) -> Mesh4 {
+    let (vertices, indices) = crate::geometry::cell_120_simplices();
+    verts_to_mesh(device, &vertices, &indices)
+}
+
+pub fn cell_600(device: &wgpu::Device) -> Mesh4 {
+    let (vertices, indices) = crate::geometry::cell_600_simplices();
+    verts_to_mesh(device, &vertices, &indices)
+}
+
 pub type Triangle = [Vertex4; 3];
 use super::CutPlane;
 use nalgebra as na;
@@ -161,23 +178,29 @@ fn approx_equal(a: f32, b: f32) -> bool {
     (a - b).abs() < EPSILON
 }
 
+fn approx_vec_eq(a: &na::Vector4<f32>, b: &na::Vector4<f32>) -> bool {
+    approx_zero((a - b).dot(&(a - b)))
+}
+
+fn side(point: &na::Vector4<f32>, cut_plane: &CutPlane) -> f32 {
+    cut_plane.normal.dot(point) - cut_plane.normal.dot(&cut_plane.base_point)
+}
+
 fn cut_line_seg(
     start: &na::Vector4<f32>,
     end: &na::Vector4<f32>,
     cut_plane: &CutPlane,
 ) -> Option<(na::Vector4<f32>, f32)> {
-    let distance = cut_plane.normal.dot(&cut_plane.base_point);
-    let b = end - start;
-    let z = b.dot(&cut_plane.normal);
-
-    if !approx_zero(z) {
-        let t = (distance - start.dot(&cut_plane.normal)) / z;
-        if -EPSILON < t && 1.0 - t > -EPSILON {
-            let intersection = start + t * b;
-            return Some((intersection, t));
-        }
+    println!("{} {}", side(start, cut_plane), side(end, cut_plane));
+    let t = -side(start, cut_plane)
+        / (side(end, cut_plane) - side(start, cut_plane));
+    let intersection = start + t * (end - start);
+    // println!("{:?} {}", intersection, t);
+    if 0.0 <= t && t <= 1.0 {
+        Some((intersection, t))
+    } else {
+        None
     }
-    None
 }
 
 fn compute_cuts(
@@ -185,14 +208,21 @@ fn compute_cuts(
     indices: &Vec<u32>,
     cut_plane: &CutPlane,
 ) {
-    let detect_intersection = |a: &na::Vector4<f32>, b: &na::Vector4<f32>| {
-        if let Some((v, t)) = cut_line_seg(a, b, cut_plane) {
-            println!("{:?}, {}", cut_plane.proj_matrix * v, t);
-        }
-    };
-
     for i in (0..indices.len()).step_by(4) {
         println!("{}!", i);
+        let mut intersections = Vec::new();
+        let mut detect_intersection =
+            |a: &na::Vector4<f32>, b: &na::Vector4<f32>| {
+                if let Some((v, t)) = cut_line_seg(a, b, cut_plane) {
+                    let q = cut_plane.proj_matrix * v;
+                    for i in intersections.iter() {
+                        if approx_vec_eq(&q, i) {
+                            return;
+                        }
+                    }
+                    intersections.push(q);
+                }
+            };
 
         let a = vertices[indices[i + 0] as usize];
         let b = vertices[indices[i + 1] as usize];
@@ -200,11 +230,13 @@ fn compute_cuts(
         let d = vertices[indices[i + 3] as usize];
 
         detect_intersection(&a, &b);
-        detect_intersection(&c, &a);
-        detect_intersection(&d, &a);
+        detect_intersection(&a, &c);
+        detect_intersection(&a, &d);
         detect_intersection(&b, &c);
         detect_intersection(&b, &d);
         detect_intersection(&c, &d);
+
+        println!("{}\n{:?}", intersections.len(), intersections);
     }
 }
 
@@ -226,9 +258,9 @@ mod test {
             ]),
         };
         let mut rotor = alg::Rotor4::identity();
-        let angular_vel = alg::Bivec4::new(1.0, -1.0, 0.0, 0.0, -1.0, 1.0);
+        let angular_vel = alg::Bivec4::new(1.0, 0.0, 0.0, 0.0, 0.0, 1.0);
 
-        for _ in 0..4 {
+        for _ in 0..214 {
             let dt = 1f32 / 60f32;
             rotor.update(&(dt * angular_vel.clone()));
         }

@@ -5,7 +5,7 @@
 #define APPROX_EQ(a, b) (abs((a) - (b)) < EPSILON)
 #define APPROX_VEC_EQ(a, b) (dot((a) - (b), (a) - (b)) < EPSILON)
 
-layout (local_size_x = 1) in;
+layout (local_size_x = 256) in;
 
 struct Vertex4 {
     vec4 position;
@@ -65,25 +65,6 @@ const uint tetrahedron_indices[12] = {
     1, 2, 3,
 };
 
-float side(vec4 point) {
-    return dot(normal, point) - dot(normal, base_point);
-}
-
-bool cut_line_seg(vec4 start, vec4 end, out vec4 intersection, out float t) {
-    float denom = side(end) - side(start);
-    if (APPROX_ZERO(denom) && APPROX_ZERO(side(end))) {
-        t = 0.5;
-    }
-    else {
-        t = -side(start) / denom;
-    }
-    if (-EPSILON <= t && t - 1.0 <= EPSILON) {
-        intersection = start + t * (end - start);
-        return true;
-    }
-    return false;
-}
-
 vec4 project(vec4 x) {
     return vec4((proj_matrix * (x - base_point)).xyz, 1.0);
 }
@@ -106,10 +87,11 @@ void main() {
     }
 
     // check to see if the tetrahedron is exactly in the cut plane
-    if (APPROX_EQ(dot(vertices[0].position, normal), dot(base_point, normal))
-        && APPROX_ZERO(dot(vertices[1].position - vertices[0].position, normal))
-        && APPROX_ZERO(dot(vertices[2].position - vertices[0].position, normal))
-        && APPROX_ZERO(dot(vertices[3].position - vertices[0].position, normal))
+    float cut_plane_offset = dot(base_point, normal);
+    if (APPROX_EQ(dot(vertices[0].position, normal), cut_plane_offset)
+        && APPROX_EQ(dot(vertices[1].position, normal), cut_plane_offset)
+        && APPROX_EQ(dot(vertices[2].position, normal), cut_plane_offset)
+        && APPROX_EQ(dot(vertices[3].position, normal), cut_plane_offset)
     ) {
 
         // emit a tetrahedron
@@ -124,27 +106,34 @@ void main() {
         Vertex4 intersections[4];
         uint count = 0;
 
-        for (uint i = 0; i < 6; i++) {
-            vec4 intersection;
-            float t = 0.;
+        for (uint i = 0; i < 4; i++) {
+            if (APPROX_ZERO(dot(normal, base_point - vertices[i].position))) {
+                intersections[count++] = vertices[i];
+            }
+        }
 
+        for (uint i = 0; i < 6; i++) {
             uvec2 edge = edges[i];
             Vertex4 start = vertices[edge.x];
             Vertex4 end = vertices[edge.y];
             vec4 a = start.position;
             vec4 b = end.position;
 
-            cut_line_seg(a, b, intersection, t);
-            if (count < 4 && cut_line_seg(a, b, intersection, t)) {
-                for (uint j = 0; j < 4; j++) {
-                    if (j == count) {
-                        intersections[count].position = intersection;
-                        intersections[count].color = mix(start.color, end.color, t);
-                        count++;
-                        break;
-                    }
-                    if (APPROX_VEC_EQ(intersections[j].position, intersection)) {
-                        break;
+            float denom = dot(normal, b - a);
+            if (!APPROX_ZERO(denom)) {
+                float t = dot(normal, base_point - a) / denom;
+                if (0.0 <= t && t <= 1.0) {
+                    vec4 intersection = a + t * (b - a);
+                    for (uint j = 0; j < 4; j++) {
+                        if (j == count) {
+                            intersections[count].position = intersection;
+                            intersections[count].color = mix(start.color, end.color, t);
+                            count++;
+                            break;
+                        }
+                        if (APPROX_VEC_EQ(intersections[j].position, intersection)) {
+                            break;
+                        }
                     }
                 }
             }
