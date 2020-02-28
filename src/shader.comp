@@ -125,9 +125,18 @@ void main() {
             vec4 b = end.position;
 
             if (count < 4 && cut_line_seg(a, b, normal, intersection, t)) {
-                intersections[count].position = project(intersection);
-                intersections[count].color = mix(start.color, end.color, t);
-                count++;
+                vec4 projected = project(intersection);
+                for (uint j = 0; j < 4; j++) {
+                    if (j == count) {
+                        intersections[j].position = projected;
+                        intersections[j].color = mix(start.color, end.color, t);
+                        count++;
+                        break;
+                    }
+                    if (APPROX_VEC_EQ(intersections[j].position, projected)) {
+                        break;
+                    }
+                }
             }
         }
 
