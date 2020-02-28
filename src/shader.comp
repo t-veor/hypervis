@@ -65,9 +65,19 @@ const uint tetrahedron_indices[12] = {
     1, 2, 3,
 };
 
-bool cut_line_seg(vec4 start, vec4 end, vec4 normal, out vec4 intersection, out float t) {
-    t = dot(base_point - start, normal) / dot(end - start, normal);
-    if (0.0 <= t && t <= 1.0) {
+float side(vec4 point) {
+    return dot(normal, point) - dot(normal, base_point);
+}
+
+bool cut_line_seg(vec4 start, vec4 end, out vec4 intersection, out float t) {
+    float denom = side(end) - side(start);
+    if (APPROX_ZERO(denom) && APPROX_ZERO(side(end))) {
+        t = 0.5;
+    }
+    else {
+        t = -side(start) / denom;
+    }
+    if (-EPSILON <= t && t - 1.0 <= EPSILON) {
         intersection = start + t * (end - start);
         return true;
     }
@@ -124,20 +134,24 @@ void main() {
             vec4 a = start.position;
             vec4 b = end.position;
 
-            if (count < 4 && cut_line_seg(a, b, normal, intersection, t)) {
-                vec4 projected = project(intersection);
+            cut_line_seg(a, b, intersection, t);
+            if (count < 4 && cut_line_seg(a, b, intersection, t)) {
                 for (uint j = 0; j < 4; j++) {
                     if (j == count) {
-                        intersections[j].position = projected;
-                        intersections[j].color = mix(start.color, end.color, t);
+                        intersections[count].position = intersection;
+                        intersections[count].color = mix(start.color, end.color, t);
                         count++;
                         break;
                     }
-                    if (APPROX_VEC_EQ(intersections[j].position, projected)) {
+                    if (APPROX_VEC_EQ(intersections[j].position, intersection)) {
                         break;
                     }
                 }
             }
+        }
+
+        for (uint i = 0; i < count; i++) {
+            intersections[i].position = project(intersections[i].position);
         }
 
         if (count < 3) {
