@@ -84,19 +84,19 @@ fn tesseract_verts(size: f32) -> (Vec<Vertex4>, Vec<u32>) {
     // ana-side cube
     cube(x, 3, -1.0, colors[0], &mut vertices, &mut indices);
     // kata-side cube
-    //cube(x, 3, 1.0, colors[1], &mut vertices, &mut indices);
+    cube(x, 3, 1.0, colors[1], &mut vertices, &mut indices);
     // top-side cube
-    //cube(x, 2, -1.0, colors[2], &mut vertices, &mut indices);
+    cube(x, 2, -1.0, colors[2], &mut vertices, &mut indices);
     // bottom-side cube
-    //cube(x, 2, 1.0, colors[3], &mut vertices, &mut indices);
+    cube(x, 2, 1.0, colors[3], &mut vertices, &mut indices);
     // front-side cube
-    //cube(x, 1, -1.0, colors[4], &mut vertices, &mut indices);
+    cube(x, 1, -1.0, colors[4], &mut vertices, &mut indices);
     // back-side cube
-    //cube(x, 1, 1.0, colors[5], &mut vertices, &mut indices);
+    cube(x, 1, 1.0, colors[5], &mut vertices, &mut indices);
     // right-side cube
-    //cube(x, 0, -1.0, colors[6], &mut vertices, &mut indices);
+    cube(x, 0, -1.0, colors[6], &mut vertices, &mut indices);
     // left-side cube
-    //cube(x, 0, 1.0, colors[7], &mut vertices, &mut indices);
+    cube(x, 0, 1.0, colors[7], &mut vertices, &mut indices);
 
     (vertices, indices)
 }

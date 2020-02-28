@@ -243,14 +243,12 @@ impl Application for TestApp {
             .fill_from_slice(&[cut_plane]);
 
         let mut rotor = alg::Rotor4::identity();
-        let angular_vel = alg::Bivec4::new(1.0, -1.0, 0.0, 0.0, -1.0, 1.0);
+        let angular_vel = alg::Bivec4::new(1.0, 0.0, 0.0, 0.0, 0.0, 1.0);
 
-        /*
-        for _ in 0..377 {
+        for _ in 0..214 {
             let dt = 1f32 / 60f32;
             rotor.update(&(dt * angular_vel.clone()));
         }
-        */
 
         let rotation_matrix = rotor.to_matrix();
 
@@ -547,7 +545,7 @@ impl Application for TestApp {
         */
 
         // Update the rotation
-        if self.frames % 20 == 0 {
+        if false {
             println!("{}", self.frames);
             let dt = 1f32 / 60f32;
             self.rotor.update(&(dt * self.angular_vel.clone()));
