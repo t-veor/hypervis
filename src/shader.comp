@@ -49,19 +49,27 @@ layout(set = 2, binding = 1) buffer DstVertices {
     Vertex4 dst_vertices[];
 };
 
-bool cut_line_seg(vec4 start, vec4 end, vec4 normal, float distance, out vec4 intersection, out float t) {
-    vec4 b = end - start;
-    float z = dot(b, normal);
+const uvec2 edges[6] = {
+    { 0, 1 },
+    { 0, 2 },
+    { 0, 3 },
+    { 1, 2 },
+    { 1, 3 },
+    { 2, 3 },
+};
 
-    if (!APPROX_ZERO(z)) {
-        t = (distance - dot(start, normal)) / z;
-        if (-EPSILON < t && 1 - t > -EPSILON) {
-            intersection = start + t * b;
-            return true;
-        }
-        else {
-            return false;
-        }
+const uint tetrahedron_indices[12] = {
+    0, 1, 2,
+    0, 1, 3,
+    0, 2, 3,
+    1, 2, 3,
+};
+
+bool cut_line_seg(vec4 start, vec4 end, vec4 normal, out vec4 intersection, out float t) {
+    t = dot(base_point - start, normal) / dot(end - start, normal);
+    if (0.0 <= t && t <= 1.0) {
+        intersection = start + t * (end - start);
+        return true;
     }
     return false;
 }
@@ -70,105 +78,117 @@ vec4 project(vec4 x) {
     return vec4((proj_matrix * (x - base_point)).xyz, 1.0);
 }
 
+float saturate(float value) {
+    return min(1.0, max(-1.0, value));
+}
+
 void main() {
     uint index = gl_GlobalInvocationID.x;
     if (index > simplex_count) {
         return;
     }
 
-    float cut_plane_distance = dot(base_point, normal);
-
-    Vertex4 a = src_vertices[src_indices[index * 4 + 0]];
-    Vertex4 b = src_vertices[src_indices[index * 4 + 1]];
-    Vertex4 c = src_vertices[src_indices[index * 4 + 2]];
-    Vertex4 d = src_vertices[src_indices[index * 4 + 3]];
-    a.position = rotation_matrix * a.position;
-    b.position = rotation_matrix * b.position;
-    c.position = rotation_matrix * c.position;
-    d.position = rotation_matrix * d.position;
+    Vertex4 vertices[4];
+    for (uint i = 0; i < 4; i++) {
+        Vertex4 source = src_vertices[src_indices[index * 4 + i]];
+        vertices[i].position = rotation_matrix * source.position;
+        vertices[i].color = source.color;
+    }
 
     // check to see if the tetrahedron is exactly in the cut plane
-    if (APPROX_EQ(dot(a.position, normal), cut_plane_distance)
-        && APPROX_ZERO(dot(b.position - a.position, normal))
-        && APPROX_ZERO(dot(c.position - a.position, normal))
-        && APPROX_ZERO(dot(d.position - a.position, normal))) {
-
-        a.color = vec4(1.0, 1.0, 1.0, 1.0);
-        b.color = vec4(1.0, 1.0, 1.0, 1.0);
-        c.color = vec4(1.0, 1.0, 1.0, 1.0);
-        d.color = vec4(1.0, 1.0, 1.0, 1.0);
+    if (APPROX_EQ(dot(vertices[0].position, normal), dot(base_point, normal))
+        && APPROX_ZERO(dot(vertices[1].position - vertices[0].position, normal))
+        && APPROX_ZERO(dot(vertices[2].position - vertices[0].position, normal))
+        && APPROX_ZERO(dot(vertices[3].position - vertices[0].position, normal))
+    ) {
 
         // emit a tetrahedron
-        uint i = atomicAdd(command.vertex_count, 12);
-        dst_vertices[i++] = a;
-        dst_vertices[i++] = b;
-        dst_vertices[i++] = c;
-
-        dst_vertices[i++] = a;
-        dst_vertices[i++] = b;
-        dst_vertices[i++] = d;
-
-        dst_vertices[i++] = a;
-        dst_vertices[i++] = c;
-        dst_vertices[i++] = d;
-
-        dst_vertices[i++] = b;
-        dst_vertices[i++] = c;
-        dst_vertices[i++] = d;
+        uint dst_index = atomicAdd(command.vertex_count, 12);
+        for (uint i = 0; i < 12; i++) {
+            Vertex4 vertex = vertices[tetrahedron_indices[i]];
+            dst_vertices[dst_index + i].position = project(vertex.position);
+            dst_vertices[dst_index + i].color = vec4(1.0, 1.0, 1.0, 1.0);
+        }
     }
     else {
-        Vertex4 result_vertices[4];
-        uint emitted_vertices = 0;
-        vec4 intersection;
-        float t = 0.;
+        Vertex4 intersections[4];
+        uint count = 0;
 
-#define DETECT_INTERSECTION(x, y) do { \
-        if (emitted_vertices < 4 && cut_line_seg((x).position, (y).position, normal, cut_plane_distance, intersection, t)) { \
-            vec4 projected_intersection = project(intersection); \
-            for (int j = 0; j < 4; j++) { \
-                if (j == emitted_vertices) { \
-                    result_vertices[emitted_vertices].position = projected_intersection; \
-                    result_vertices[emitted_vertices].color = mix((x).color, (y).color, t); \
-                    emitted_vertices++; \
-                    break; \
-                } \
-                if (APPROX_VEC_EQ(projected_intersection, result_vertices[j].position)) { \
-                    break; \
-                } \
-            } \
-        } \
-    } while(false)
+        for (uint i = 0; i < 6; i++) {
+            vec4 intersection;
+            float t = 0.;
 
-        DETECT_INTERSECTION(a, b);
-        DETECT_INTERSECTION(c, a);
-        DETECT_INTERSECTION(d, a);
-        DETECT_INTERSECTION(b, c);
-        DETECT_INTERSECTION(b, d);
-        DETECT_INTERSECTION(c, d);
+            uvec2 edge = edges[i];
+            Vertex4 start = vertices[edge.x];
+            Vertex4 end = vertices[edge.y];
+            vec4 a = start.position;
+            vec4 b = end.position;
 
-#define EMIT_TRIANGLE(i, a, b, c) do { \
-        dst_vertices[i++] = result_vertices[a]; \
-        dst_vertices[i++] = result_vertices[b]; \
-        dst_vertices[i++] = result_vertices[c]; \
-    } while(false)
+            if (count < 4 && cut_line_seg(a, b, normal, intersection, t)) {
+                intersections[count].position = project(intersection);
+                intersections[count].color = mix(start.color, end.color, t);
+                count++;
+            }
+        }
 
-        if (emitted_vertices < 3) {
+        if (count < 3) {
             // do nothing
             return;
         }
-        else if (emitted_vertices == 3)
+        else if (count == 3)
         {
             // emit a triangle
-            uint i = atomicAdd(command.vertex_count, 3);
-            EMIT_TRIANGLE(i, 0, 1, 2);
+            uint dst_index = atomicAdd(command.vertex_count, 3);
+            dst_vertices[dst_index + 0] = intersections[0];
+            dst_vertices[dst_index + 1] = intersections[1];
+            dst_vertices[dst_index + 2] = intersections[2];
         }
         else {
             // emit a quadrilateral
-            uint i = atomicAdd(command.vertex_count, 12);
-            EMIT_TRIANGLE(i, 0, 1, 2);
-            EMIT_TRIANGLE(i, 0, 2, 3);
-            EMIT_TRIANGLE(i, 0, 1, 3);
-            EMIT_TRIANGLE(i, 1, 2, 3);
+            vec2 angles[4] = {
+                { 0.0, 0.0 },
+                { 1.0, 0.0 },
+                { 2.0, 0.0 },
+                { 3.0, 0.0 },
+            };
+
+            vec3 a = intersections[0].position.xyz;
+            vec3 b = intersections[1].position.xyz;
+            vec3 c = intersections[2].position.xyz;
+            vec3 n = normalize(cross(b - a, c - a));
+
+            vec3 quad_centroid = vec3(0.0);
+            for (uint i = 0; i < 4; i++) {
+                quad_centroid += intersections[i].position.xyz;
+            }
+            quad_centroid /= 4.0;
+
+            vec3 first = normalize(a - quad_centroid);
+            for (uint i = 1; i < 4; i++) {
+                vec3 edge = normalize(
+                    intersections[i].position.xyz - quad_centroid);
+                float angle = acos(saturate(dot(first, edge)));
+                if (dot(n, cross(first, edge)) < 0.0) {
+                    angle *= -1.0;
+                }
+                angles[i].y = angle;
+            }
+
+            for (uint i = 1; i < 4; i++) {
+                for (uint j = i; j > 0 && angles[j - 1].y > angles[j].y; j--) {
+                    vec2 tmp = angles[j];
+                    angles[j] = angles[j - 1];
+                    angles[j - 1] = tmp;
+                }
+            }
+
+            uint dst_index = atomicAdd(command.vertex_count, 6);
+            dst_vertices[dst_index + 0] = intersections[uint(angles[0].x)];
+            dst_vertices[dst_index + 1] = intersections[uint(angles[1].x)];
+            dst_vertices[dst_index + 2] = intersections[uint(angles[2].x)];
+            dst_vertices[dst_index + 3] = intersections[uint(angles[0].x)];
+            dst_vertices[dst_index + 4] = intersections[uint(angles[2].x)];
+            dst_vertices[dst_index + 5] = intersections[uint(angles[3].x)];
         }
     }
 }
