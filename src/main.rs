@@ -529,6 +529,42 @@ impl Application for TestApp {
         );
 
         {
+            let mut render_pass =
+                encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    color_attachments: &[
+                        wgpu::RenderPassColorAttachmentDescriptor {
+                            attachment: &frame.view,
+                            resolve_target: None,
+                            load_op: wgpu::LoadOp::Clear,
+                            store_op: wgpu::StoreOp::Store,
+                            clear_color: wgpu::Color {
+                                r: 0.0,
+                                g: 0.0,
+                                b: 0.0,
+                                a: 1.0,
+                            },
+                        },
+                    ],
+                    depth_stencil_attachment: Some(
+                        wgpu::RenderPassDepthStencilAttachmentDescriptor {
+                            attachment: &self.depth_texture_view,
+                            depth_load_op: wgpu::LoadOp::Clear,
+                            depth_store_op: wgpu::StoreOp::Store,
+                            clear_depth: 1.0,
+                            stencil_load_op: wgpu::LoadOp::Clear,
+                            stencil_store_op: wgpu::StoreOp::Store,
+                            clear_stencil: 0,
+                        },
+                    ),
+                });
+
+            render_pass.set_pipeline(&self.render_pipeline);
+            render_pass.set_vertex_buffers(0, &[(&self.dst_vertices, 0)]);
+            render_pass.set_bind_group(0, &self.vertex_bind_group, &[]);
+            render_pass.draw_indirect(&self.draw_indirect_command, 0);
+        }
+
+        {
             let scale = (self.frames % 600) as f32 / 600.0 * 2.0 - 1.0;
             self.cut_plane.base_point = na::Vector4::new(0.0, 0.0, 0.0, scale);
             let staging_buffer = ctx
@@ -597,42 +633,6 @@ impl Application for TestApp {
                 1,
                 1,
             );
-        }
-
-        {
-            let mut render_pass =
-                encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    color_attachments: &[
-                        wgpu::RenderPassColorAttachmentDescriptor {
-                            attachment: &frame.view,
-                            resolve_target: None,
-                            load_op: wgpu::LoadOp::Clear,
-                            store_op: wgpu::StoreOp::Store,
-                            clear_color: wgpu::Color {
-                                r: 0.0,
-                                g: 0.0,
-                                b: 0.0,
-                                a: 1.0,
-                            },
-                        },
-                    ],
-                    depth_stencil_attachment: Some(
-                        wgpu::RenderPassDepthStencilAttachmentDescriptor {
-                            attachment: &self.depth_texture_view,
-                            depth_load_op: wgpu::LoadOp::Clear,
-                            depth_store_op: wgpu::StoreOp::Store,
-                            clear_depth: 1.0,
-                            stencil_load_op: wgpu::LoadOp::Clear,
-                            stencil_store_op: wgpu::StoreOp::Store,
-                            clear_stencil: 0,
-                        },
-                    ),
-                });
-
-            render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_vertex_buffers(0, &[(&self.dst_vertices, 0)]);
-            render_pass.set_bind_group(0, &self.vertex_bind_group, &[]);
-            render_pass.draw_indirect(&self.draw_indirect_command, 0);
         }
 
         ctx.queue.submit(&[encoder.finish()]);

@@ -47,6 +47,8 @@ impl Ctx {
         })
         .ok_or(anyhow!("Could not acquire adapter"))?;
 
+        println!("{:?}", adapter.get_info());
+
         let (device, queue) = adapter.request_device(&wgpu::DeviceDescriptor {
             extensions: wgpu::Extensions {
                 anisotropic_filtering: false,
