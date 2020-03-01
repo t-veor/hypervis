@@ -25,19 +25,20 @@ layout(set = 0, binding = 0) uniform CutPlane {
     mat4 proj_matrix;
 };
 
-layout(set = 0, binding = 1) uniform RotationMatrix {
-    mat4 rotation_matrix;
+layout(set = 0, binding = 1) uniform Transform {
+    vec4 displacement;
+    mat4 transform_matrix;
 };
 
 layout(set = 1, binding = 0) uniform SimplexCount {
     uint simplex_count;
 };
 
-layout(set = 1, binding = 1) buffer SrcVertices {
+layout(set = 1, binding = 1) readonly buffer SrcVertices {
     Vertex4 src_vertices[];
 };
 
-layout(set = 1, binding = 2) buffer SrcIndices {
+layout(set = 1, binding = 2) readonly buffer SrcIndices {
     uint src_indices[];
 };
 
@@ -45,7 +46,7 @@ layout(set = 2, binding = 0) buffer DrawCommand {
     DrawIndirectCommand command;
 };
 
-layout(set = 2, binding = 1) buffer DstVertices {
+layout(set = 2, binding = 1) writeonly buffer DstVertices {
     Vertex4 dst_vertices[];
 };
 
@@ -82,7 +83,7 @@ void main() {
     Vertex4 vertices[4];
     for (uint i = 0; i < 4; i++) {
         Vertex4 source = src_vertices[src_indices[index * 4 + i]];
-        vertices[i].position = rotation_matrix * source.position;
+        vertices[i].position = transform_matrix * source.position + displacement;
         vertices[i].color = source.color;
     }
 

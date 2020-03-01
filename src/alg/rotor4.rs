@@ -1,5 +1,5 @@
-use super::{Bivec4, Quadvec4, Trivec4, Vec4};
-use nalgebra as na;
+use super::{Bivec4, Quadvec4, Vec4};
+use cgmath::Matrix4;
 
 #[derive(Debug, Clone)]
 pub struct Rotor4 {
@@ -90,7 +90,7 @@ impl Rotor4 {
         mag_sq.sqrt()
     }
 
-    pub fn to_matrix(&self) -> na::Matrix4<f32> {
+    pub fn to_matrix(&self) -> Matrix4<f32> {
         let x = self.rotate(&Vec4 {
             x: 1.0,
             y: 0.0,
@@ -116,12 +116,14 @@ impl Rotor4 {
             w: 1.0,
         });
 
-        na::Matrix4::from_columns(&[
-            na::Vector4::new(x.x, x.y, x.z, x.w),
-            na::Vector4::new(y.x, y.y, y.z, y.w),
-            na::Vector4::new(z.x, z.y, z.z, z.w),
-            na::Vector4::new(w.x, w.y, w.z, w.w),
-        ])
+        // attributes are not allowed on expressions apparently
+        #[rustfmt::skip]
+        return Matrix4::new(
+            x.x, x.y, x.z, x.w,
+            y.x, y.y, y.z, y.w,
+            z.x, z.y, z.z, z.w,
+            w.x, w.y, w.z, w.w,
+        );
     }
 }
 
@@ -134,6 +136,7 @@ impl Default for Rotor4 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cgmath::SquareMatrix;
 
     #[test]
     fn deteriminant_always_one() {
@@ -145,7 +148,7 @@ mod tests {
         rotor.normalize();
 
         println!(
-            "{:?} {} {}",
+            "{:?} {:?} {}",
             rotor,
             rotor.to_matrix(),
             rotor.to_matrix().determinant()

@@ -8,6 +8,8 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
+pub use graphics::GraphicsContext;
+
 pub trait Application: 'static + Sized {
     fn init(ctx: &mut Ctx) -> Self;
     fn resize(&mut self, ctx: &mut Ctx);
@@ -20,12 +22,7 @@ pub struct Ctx {
     pub window: Window,
     pub size: PhysicalSize<u32>,
 
-    pub surface: wgpu::Surface,
-    pub adapter: wgpu::Adapter,
-    pub device: wgpu::Device,
-    pub queue: wgpu::Queue,
-    pub sc_desc: wgpu::SwapChainDescriptor,
-    pub swap_chain: wgpu::SwapChain,
+    pub graphics_ctx: GraphicsContext,
 }
 
 impl Ctx {
@@ -39,41 +36,13 @@ impl Ctx {
             .with_title(title)
             .build(event_loop)?;
         let size = window.inner_size();
-        let surface = wgpu::Surface::create(&window);
 
-        let adapter = wgpu::Adapter::request(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            ..Default::default()
-        })
-        .ok_or(anyhow!("Could not acquire adapter"))?;
-
-        println!("{:?}", adapter.get_info());
-
-        let (device, queue) = adapter.request_device(&wgpu::DeviceDescriptor {
-            extensions: wgpu::Extensions {
-                anisotropic_filtering: false,
-            },
-            limits: Default::default(),
-        });
-
-        let sc_desc = wgpu::SwapChainDescriptor {
-            usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT,
-            format: wgpu::TextureFormat::Bgra8UnormSrgb,
-            width: size.width,
-            height: size.height,
-            present_mode: wgpu::PresentMode::Vsync,
-        };
-        let swap_chain = device.create_swap_chain(&surface, &sc_desc);
+        let graphics_ctx = GraphicsContext::new(&window)?;
 
         Ok(Self {
             window,
             size,
-            surface,
-            adapter,
-            device,
-            queue,
-            sc_desc,
-            swap_chain,
+            graphics_ctx,
         })
     }
 }
@@ -91,11 +60,13 @@ pub fn run<App: Application>(title: &str, size: (u32, u32)) -> Result<()> {
                     *control_flow = ControlFlow::Exit
                 }
                 WindowEvent::Resized(size) => {
-                    ctx.sc_desc.width = size.width;
-                    ctx.sc_desc.height = size.height;
-                    ctx.swap_chain = ctx
-                        .device
-                        .create_swap_chain(&ctx.surface, &ctx.sc_desc);
+                    ctx.graphics_ctx.sc_desc.width = size.width;
+                    ctx.graphics_ctx.sc_desc.height = size.height;
+                    ctx.graphics_ctx.swap_chain =
+                        ctx.graphics_ctx.device.create_swap_chain(
+                            &ctx.graphics_ctx.surface,
+                            &ctx.graphics_ctx.sc_desc,
+                        );
                     app.resize(&mut ctx);
                 }
                 _ => (),

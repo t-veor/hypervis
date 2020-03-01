@@ -1,4 +1,4 @@
-use nalgebra::Vector4;
+use cgmath::Vector4;
 use std::f32::consts::FRAC_1_SQRT_2;
 
 pub fn cell_120_verts() -> Vec<Vector4<f32>> {

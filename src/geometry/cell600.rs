@@ -1,4 +1,4 @@
-use nalgebra::Vector4;
+use cgmath::Vector4;
 
 pub fn cell_600_verts() -> Vec<Vector4<f32>> {
     vec![

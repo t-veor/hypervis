@@ -4,9 +4,8 @@ mod cell600;
 pub use cell120::*;
 pub use cell600::*;
 
-use crate::mesh4::*;
-use na::{Vector3, Vector4};
-use nalgebra as na;
+use crate::context::graphics::Vertex4;
+use cgmath::{prelude::Zero, InnerSpace, Vector3, Vector4};
 
 fn cell_120_hplanes() -> Vec<(Vector4<f32>, f32)> {
     cell_600_verts().iter().map(|v| (*v, -0.925615)).collect()
@@ -30,7 +29,7 @@ fn cell_120_cells() -> Vec<(Vector4<f32>, Vec<usize>)> {
                 let mut inside = true;
                 for vertex_idx in vertex_indices.iter() {
                     let vertex = vertices[*vertex_idx];
-                    if vertex.dot(n) - d > 0.00001 {
+                    if vertex.dot(*n) - d > 0.00001 {
                         inside = false;
                         break;
                     }
@@ -60,7 +59,7 @@ fn cell_600_cells() -> Vec<(Vector4<f32>, Vec<usize>)> {
                 let mut inside = true;
                 for vertex_idx in vertex_indices.iter() {
                     let vertex = vertices[*vertex_idx];
-                    if vertex.dot(n) - d > 0.00001 {
+                    if vertex.dot(*n) - d > 0.00001 {
                         inside = false;
                         break;
                     }
@@ -91,22 +90,16 @@ fn sort_points_on_plane(
         }
     }
 
-    let project = |v: &Vector4<f32>| match max_idx {
-        0 => Vector3::new(v.y, v.z, v.w),
-        1 => Vector3::new(v.x, v.z, v.w),
-        2 => Vector3::new(v.x, v.y, v.w),
-        3 => Vector3::new(v.x, v.y, v.z),
-        _ => unreachable!(),
-    };
-
-    let projected_points: Vec<_> =
-        points.iter().map(|(_, v)| project(v)).collect();
+    let projected_points: Vec<_> = points
+        .iter()
+        .map(|(_, v)| v.truncate_n(max_idx as isize))
+        .collect();
 
     let a = projected_points[0];
     let b = projected_points[1];
     let c = projected_points[2];
-    let n = (b - a).cross(&(c - a)).normalize();
-    let centroid = projected_points.iter().fold(Vector3::zeros(), |i, j| i + j)
+    let n = (b - a).cross(c - a).normalize();
+    let centroid = projected_points.iter().fold(Vector3::zero(), |i, j| i + j)
         / projected_points.len() as f32;
 
     let first = (a - centroid).normalize();
@@ -115,8 +108,8 @@ fn sort_points_on_plane(
         .enumerate()
         .map(|(i, v)| {
             let edge = (v - centroid).normalize();
-            let mut angle = first.dot(&edge).min(1.0).max(-1.0).acos();
-            if n.dot(&first.cross(&edge)) < 0.0 {
+            let mut angle = first.dot(edge).min(1.0).max(-1.0).acos();
+            if n.dot(first.cross(edge)) < 0.0 {
                 angle *= -1.0;
             }
             (angle, i)
@@ -139,8 +132,6 @@ pub fn cell_120_simplices() -> (Vec<Vertex4>, Vec<u32>) {
     let vertices = cell_120_verts();
     let faces = cell_120_faces();
 
-    let vec4_to_arr = |v: &Vector4<f32>| [v.x, v.y, v.z, v.w];
-
     for (normal, face_indices) in cell_120_cells().iter() {
         use hsl::HSL;
         let (r, g, b) = HSL {
@@ -151,13 +142,18 @@ pub fn cell_120_simplices() -> (Vec<Vertex4>, Vec<u32>) {
             l: 0.5 + rand::random::<f64>() * 0.1,
         }
         .to_rgb();
-        let color = [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, 1.0];
+        let color = Vector4::new(
+            r as f32 / 255.0,
+            g as f32 / 255.0,
+            b as f32 / 255.0,
+            1.0,
+        );
 
         let apex = vertices[faces[face_indices[0]]];
         let apex_id = faces[face_indices[0]];
         let apex_colored_id = colored_verts.len();
         colored_verts.push(Vertex4 {
-            position: vec4_to_arr(&apex),
+            position: apex,
             color,
         });
 
@@ -177,7 +173,7 @@ pub fn cell_120_simplices() -> (Vec<Vertex4>, Vec<u32>) {
             let prev_colored_len = colored_verts.len();
             for (_, v) in sorted_vertices.iter() {
                 colored_verts.push(Vertex4 {
-                    position: vec4_to_arr(v),
+                    position: *v,
                     color,
                 });
             }
@@ -200,8 +196,6 @@ pub fn cell_600_simplices() -> (Vec<Vertex4>, Vec<u32>) {
     let vertices = cell_600_verts();
     let faces = cell_600_faces();
 
-    let vec4_to_arr = |v: &Vector4<f32>| [v.x, v.y, v.z, v.w];
-
     for (normal, face_indices) in cell_600_cells().iter() {
         use hsl::HSL;
         let (r, g, b) = HSL {
@@ -212,13 +206,18 @@ pub fn cell_600_simplices() -> (Vec<Vertex4>, Vec<u32>) {
             l: 0.5 + rand::random::<f64>() * 0.1,
         }
         .to_rgb();
-        let color = [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, 1.0];
+        let color = Vector4::new(
+            r as f32 / 255.0,
+            g as f32 / 255.0,
+            b as f32 / 255.0,
+            1.0,
+        );
 
         let apex = vertices[faces[face_indices[0]]];
         let apex_id = faces[face_indices[0]];
         let apex_colored_id = colored_verts.len();
         colored_verts.push(Vertex4 {
-            position: vec4_to_arr(&apex),
+            position: apex,
             color,
         });
 
@@ -238,7 +237,7 @@ pub fn cell_600_simplices() -> (Vec<Vertex4>, Vec<u32>) {
             let prev_colored_len = colored_verts.len();
             for (_, v) in sorted_vertices.iter() {
                 colored_verts.push(Vertex4 {
-                    position: vec4_to_arr(v),
+                    position: *v,
                     color,
                 });
             }
