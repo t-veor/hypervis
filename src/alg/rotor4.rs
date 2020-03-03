@@ -1,7 +1,8 @@
 use super::{Bivec4, Quadvec4, Vec4};
 use cgmath::Matrix4;
+use std::ops::{Add, Mul};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct Rotor4 {
     pub s: f32,
     pub b: Bivec4,
@@ -21,17 +22,21 @@ impl Rotor4 {
         Self { s, b, q }
     }
 
+    pub fn reverse(&self) -> Rotor4 {
+        Rotor4::new(self.s, self.b.reverse(), self.q)
+    }
+
     pub fn rotate(&self, v: &Vec4) -> Vec4 {
         // p = R v ~R. We do this in two steps:
         // Q = R v
         let (a_1, a_3) = self.b.mul_v(v);
         let b_3 = self.q.mul_v(v);
-        let q_1 = self.s * v.clone() + a_1;
+        let q_1 = self.s * *v + a_1;
         let q_3 = a_3 + b_3;
 
         // p = Q ~R
         let b_rev = self.b.reverse();
-        let p = self.s * q_1.clone()
+        let p = self.s * q_1
             + q_1.left_contract_bv(&b_rev)
             + q_3.right_contract_bv(&b_rev)
             + q_3.mul_qv(&self.q);
@@ -43,40 +48,19 @@ impl Rotor4 {
         let (a_0, a_2, a_4) = self.b.mul_bv(c);
         Self {
             s: a_0,
-            b: self.s * c.clone() + a_2 + self.q.mul_bv(c),
+            b: self.s * *c + a_2 + self.q.mul_bv(c),
             q: a_4,
         }
     }
 
     pub fn update(&mut self, delta: &Bivec4) {
-        let delta_r = self.mul_bv(delta);
-        self.s = self.s + -0.5 * delta_r.s;
-        self.b = self.b.clone() + -0.5 * delta_r.b;
-        self.q = self.q + -0.5 * delta_r.q;
-        self.normalize();
+        *self = *self * (-0.5 * *delta).exp();
+        // TODO: this still very slowly accumulates numerical error over time,
+        // so we need some sort of normalisation operation for 4D rotors.
     }
 
     pub fn normalize(&mut self) {
-        let neg_xyzw = self.b.xy * self.b.zw - self.b.xz * self.b.zw
-            + self.b.xw * self.b.yz;
-        let pos_xyzw = self.s * self.q.xyzw;
-
-        let neg_factor = neg_xyzw.abs().sqrt();
-        let pos_factor = pos_xyzw.abs().sqrt();
-
-        if neg_xyzw != 0.0
-            && pos_xyzw != 0.0
-            && neg_xyzw.signum() == pos_xyzw.signum()
-        {
-            self.s *= neg_factor;
-            self.b = pos_factor * self.b.clone();
-            self.q = neg_factor * self.q.clone();
-        }
-
-        let inverse_mag = 1.0 / self.mag();
-        self.s *= inverse_mag;
-        self.b = inverse_mag * self.b.clone();
-        self.q = inverse_mag * self.q.clone();
+        unimplemented!()
     }
 
     pub fn mag(&self) -> f32 {
@@ -84,10 +68,36 @@ impl Rotor4 {
             + self.b.xy * self.b.xy
             + self.b.xz * self.b.xz
             + self.b.xw * self.b.xw
+            + self.b.yz * self.b.yz
             + self.b.yw * self.b.yw
             + self.b.zw * self.b.zw
             + self.q.xyzw * self.q.xyzw;
         mag_sq.sqrt()
+    }
+
+    pub fn weird_term(&self) -> f32 {
+        -2.0 * self.b.xw * self.b.yz - 2.0 * self.b.xy * self.b.zw
+            + 2.0 * self.b.xz * self.b.yw
+            + 2.0 * self.q.xyzw * self.s
+    }
+
+    pub fn decompose(&self) -> (Rotor4, Rotor4) {
+        let pos_half_xyzw = Quadvec4::new(0.5);
+        let neg_half_xyzw = Quadvec4::new(-0.5);
+
+        let r_plus = Rotor4::new(
+            0.5 + 0.5 * self.s + 0.5 * self.q.xyzw,
+            0.5 * self.b + pos_half_xyzw.mul_bv(&self.b),
+            0.5 * self.q + self.s * pos_half_xyzw + neg_half_xyzw,
+        );
+
+        let r_minus = Rotor4::new(
+            0.5 + 0.5 * self.s - 0.5 * self.q.xyzw,
+            0.5 * self.b + neg_half_xyzw.mul_bv(&self.b),
+            0.5 * self.q + self.s * neg_half_xyzw + pos_half_xyzw,
+        );
+
+        (r_plus, r_minus)
     }
 
     pub fn to_matrix(&self) -> Matrix4<f32> {
@@ -133,35 +143,46 @@ impl Default for Rotor4 {
     }
 }
 
+impl Add<Rotor4> for Rotor4 {
+    type Output = Rotor4;
+    fn add(self, other: Rotor4) -> Rotor4 {
+        Rotor4::new(self.s + other.s, self.b + other.b, self.q + other.q)
+    }
+}
+
+impl Mul<Rotor4> for Rotor4 {
+    type Output = Rotor4;
+    fn mul(self, r_1: Rotor4) -> Rotor4 {
+        let r_0 = self;
+        let (a_0, a_2, a_4) = r_0.b.mul_bv(&r_1.b);
+        Rotor4::new(
+            r_0.s * r_1.s + a_0 + r_0.q.xyzw * r_1.q.xyzw,
+            r_0.s * r_1.b
+                + r_1.s * r_0.b
+                + a_2
+                + r_0.q.mul_bv(&r_1.b)
+                + r_1.q.mul_bv(&r_0.b),
+            r_0.s * r_1.q + r_1.s * r_0.q + a_4,
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use cgmath::SquareMatrix;
 
     #[test]
-    fn deteriminant_always_one() {
-        let mut rotor = Rotor4::new(
-            1.0,
-            Bivec4::new(1.0, 0.0, 0.0, 0.0, 0.0, 1.0),
-            Quadvec4 { xyzw: 1.0 },
-        );
-        rotor.normalize();
-
+    fn long_term_rotation_error() {
+        let mut r = Rotor4::identity();
+        for _ in 0..100000 {
+            r.update(&Bivec4::new(1.0, 2.0, 3.0, 4.0, 5.0, 6.0));
+        }
         println!(
-            "{:?} {:?} {}",
-            rotor,
-            rotor.to_matrix(),
-            rotor.to_matrix().determinant()
+            "{} {} {}",
+            r.mag(),
+            r.weird_term(),
+            r.to_matrix().determinant()
         );
-    }
-
-    #[test]
-    fn what() {
-        let mut rotor = Rotor4::identity();
-        let bv = Bivec4::new(2.0, 0.0, 0.0, 0.0, 0.0, 2.0);
-        rotor.update(&bv);
-
-        println!("{:?}", rotor);
-        println!("{:?}", rotor.mul_bv(&bv));
     }
 }

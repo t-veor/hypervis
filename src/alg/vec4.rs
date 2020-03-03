@@ -2,7 +2,7 @@ use super::{Bivec4, Trivec4};
 use mint::Vector4;
 use std::ops::{Add, Mul};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct Vec4 {
     pub x: f32,
     pub y: f32,

@@ -7,6 +7,10 @@ pub struct Quadvec4 {
 }
 
 impl Quadvec4 {
+    pub fn new(xyzw: f32) -> Self {
+        Self { xyzw }
+    }
+
     pub fn zero() -> Self {
         Self { xyzw: 0.0 }
     }
@@ -28,7 +32,7 @@ impl Quadvec4 {
             xz: b.yw * xyzw,
             xw: -b.yz * xyzw,
             yz: -b.xw * xyzw,
-            yw: -b.xz * xyzw,
+            yw: b.xz * xyzw,
             zw: -b.xy * xyzw,
         }
     }

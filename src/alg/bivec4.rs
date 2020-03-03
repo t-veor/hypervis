@@ -1,7 +1,7 @@
-use super::{Quadvec4, Trivec4, Vec4};
+use super::{Quadvec4, Rotor4, Trivec4, Vec4};
 use std::ops::{Add, Mul};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct Bivec4 {
     pub xy: f32,
     pub xz: f32,
@@ -82,6 +82,47 @@ impl Bivec4 {
 
         (s, d, q)
     }
+
+    pub fn decompose(&self) -> (Bivec4, Bivec4) {
+        let pos_half_xyzw = Quadvec4::new(0.5);
+        let neg_half_xyzw = Quadvec4::new(-0.5);
+
+        let b_plus = 0.5 * *self + pos_half_xyzw.mul_bv(self);
+        let b_minus = 0.5 * *self + neg_half_xyzw.mul_bv(self);
+
+        (b_plus, b_minus)
+    }
+
+    pub fn exp(&self) -> Rotor4 {
+        let (b_plus, b_minus) = self.decompose();
+
+        let theta_plus = 2.0
+            * (b_plus.xy.powi(2) + b_plus.xz.powi(2) + b_plus.xw.powi(2))
+                .sqrt();
+        let theta_minus = 2.0
+            * (b_minus.xy.powi(2) + b_minus.xz.powi(2) + b_minus.xw.powi(2))
+                .sqrt();
+
+        let inv_theta_plus = if theta_plus > 0.0 {
+            1.0 / theta_plus
+        } else {
+            0.0
+        };
+        let inv_theta_minus = if theta_minus > 0.0 {
+            1.0 / theta_minus
+        } else {
+            0.0
+        };
+
+        let unit_b_plus = inv_theta_plus * b_plus;
+        let unit_b_minus = inv_theta_minus * b_minus;
+
+        Rotor4::new(
+            0.5 * theta_plus.cos() + 0.5 * theta_minus.cos(),
+            theta_plus.sin() * unit_b_plus + theta_minus.sin() * unit_b_minus,
+            Quadvec4::new(0.5 * theta_plus.cos() - 0.5 * theta_minus.cos()),
+        )
+    }
 }
 
 impl Add<Bivec4> for Bivec4 {
@@ -110,5 +151,18 @@ impl Mul<Bivec4> for f32 {
             yw: self * b.yw,
             zw: self * b.zw,
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn decomp_test() {
+        let b = Bivec4::new(1.0, 2.0, 3.0, 4.0, 5.0, 6.0);
+        let r = b.exp();
+        println!("{:?}", r);
+        println!("{:?}", r.mag());
     }
 }
