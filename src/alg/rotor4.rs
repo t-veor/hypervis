@@ -55,12 +55,66 @@ impl Rotor4 {
 
     pub fn update(&mut self, delta: &Bivec4) {
         *self = *self * (-0.5 * *delta).exp();
-        // TODO: this still very slowly accumulates numerical error over time,
-        // so we need some sort of normalisation operation for 4D rotors.
+        self.normalize();
     }
 
     pub fn normalize(&mut self) {
-        unimplemented!()
+        // we decompose into two isoclinic rotations, which are each equivalent
+        // to a quaternion. Each quaternion component is normalised, and then we
+        // recover the original rotor
+
+        let (mut r_plus, mut r_minus) = self.decompose();
+
+        // get rid of the 1/2 (1 +- xyzw) components
+        r_plus.s -= 0.5;
+        r_minus.s -= 0.5;
+        // we're going to overwrite the quadvector components since they should
+        // be just +- the scalar components.
+
+        let plus_mag = 2.0
+            * (r_plus.s.powi(2)
+                + r_plus.b.xy.powi(2)
+                + r_plus.b.xz.powi(2)
+                + r_plus.b.xw.powi(2))
+            .sqrt();
+        let minus_mag = 2.0
+            * (r_minus.s.powi(2)
+                + r_minus.b.xy.powi(2)
+                + r_minus.b.xz.powi(2)
+                + r_minus.b.xw.powi(2))
+            .sqrt();
+
+        if plus_mag > 0.0 {
+            let inv_plus_mag = 1.0 / plus_mag;
+            r_plus.s *= inv_plus_mag;
+            r_plus.b = inv_plus_mag * r_plus.b;
+            r_plus.q.xyzw = r_plus.s;
+
+            // readd 1/2 (1 - xyzw)
+            r_plus.s += 0.5;
+            r_plus.q.xyzw -= 0.5;
+        } else {
+            // TODO:
+            // unimplemented!("{:?} has zero magnitude!", r_plus);
+            r_plus = Rotor4::identity();
+        }
+
+        if minus_mag > 0.0 {
+            let inv_minus_mag = 1.0 / minus_mag;
+            r_minus.s *= inv_minus_mag;
+            r_minus.b = inv_minus_mag * r_minus.b;
+            r_minus.q.xyzw = -r_minus.s;
+
+            // readd 1/2 (1 + xyzw)
+            r_minus.s += 0.5;
+            r_minus.q.xyzw += 0.5;
+        } else {
+            // TODO
+            // unimplemented!("{:?} has zero magnitude!", r_minus);
+            r_minus = Rotor4::identity();
+        }
+
+        *self = r_plus * r_minus;
     }
 
     pub fn mag(&self) -> f32 {
@@ -81,6 +135,8 @@ impl Rotor4 {
             + 2.0 * self.q.xyzw * self.s
     }
 
+    // Perform Cayley Factorisation to factorise the rotor into two pure
+    // isoclinic rotations.
     pub fn decompose(&self) -> (Rotor4, Rotor4) {
         let pos_half_xyzw = Quadvec4::new(0.5);
         let neg_half_xyzw = Quadvec4::new(-0.5);
@@ -179,7 +235,8 @@ mod tests {
             r.update(&Bivec4::new(1.0, 2.0, 3.0, 4.0, 5.0, 6.0));
         }
         println!(
-            "{} {} {}",
+            "{:?}\n{} {} {}",
+            r,
             r.mag(),
             r.weird_term(),
             r.to_matrix().determinant()
