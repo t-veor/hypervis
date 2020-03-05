@@ -2,6 +2,8 @@ mod alg;
 mod context;
 mod geometry;
 mod mesh4;
+mod physics;
+mod world;
 
 use anyhow::Result;
 use cgmath::{prelude::Zero, Matrix4, Vector4};
