@@ -1,6 +1,7 @@
 mod alg;
 mod context;
 mod geometry;
+mod mesh;
 mod mesh4;
 mod physics;
 mod world;
@@ -10,8 +11,8 @@ use cgmath::{prelude::Zero, Matrix4, Vector4};
 use winit::event::WindowEvent;
 
 use context::graphics::{
-    MeshBinding, SlicePipeline, SlicePlane, Transform4, TriangleListPipeline,
-    ViewProjection, DEPTH_FORMAT,
+    SlicePipeline, SlicePlane, TriangleListPipeline, ViewProjection,
+    DEPTH_FORMAT,
 };
 use context::{Application, Ctx};
 use physics::{Body, Collider, Material};
@@ -61,20 +62,28 @@ impl Application for TestApp {
         let slice_pipeline = SlicePipeline::new(&ctx.graphics_ctx).unwrap();
 
         let mut world = World::new();
+
+        let floor_mesh = mesh4::floor(4.0);
+        let floor_mesh_binding = slice_pipeline.create_mesh_binding(
+            &ctx.graphics_ctx,
+            &floor_mesh.vertices,
+            &floor_mesh.indices,
+        );
         world.objects.push(Object {
             body: Body {
                 mass: 0.0,
+                moment_inertia_scalar: 0.0,
                 material: Material { restitution: 0.4 },
                 stationary: true,
                 pos: Vector4::zero(),
                 vel: Vector4::zero(),
                 rotation: alg::Rotor4::identity(),
                 angular_vel: alg::Bivec4::zero(),
-                collider: Collider::HalfPlane {
+                collider: Collider::HalfSpace {
                     normal: Vector4::unit_y(),
                 },
             },
-            mesh_binding: None,
+            mesh_binding: Some(floor_mesh_binding),
         });
 
         let mesh = mesh4::tesseract(1.0);
@@ -86,12 +95,21 @@ impl Application for TestApp {
         world.objects.push(Object {
             body: Body {
                 mass: 1.0,
+                moment_inertia_scalar: 1.0 / 6.0,
                 material: Material { restitution: 0.4 },
                 stationary: false,
                 pos: Vector4::unit_y(),
                 vel: Vector4::new(0.0, 1.0, 0.0, 0.0),
-                rotation: alg::Rotor4::identity(),
-                angular_vel: alg::Bivec4::new(0.0, 0.0, 1.0, 0.0, 0.0, 0.0),
+                rotation: alg::Bivec4::new(
+                    std::f32::consts::PI / 8.0 - 0.1,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                )
+                .exp(),
+                angular_vel: alg::Bivec4::new(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
                 collider: Collider::Tesseract { half_width: 0.5 },
             },
             mesh_binding: Some(mesh_binding),

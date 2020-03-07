@@ -1,4 +1,4 @@
-use super::{Collider, Collision};
+use super::{Collider, CollisionResponse};
 use crate::alg::{Bivec4, Rotor4};
 use cgmath::Vector4;
 
@@ -10,6 +10,9 @@ pub struct Material {
 #[derive(Clone)]
 pub struct Body {
     pub mass: f32,
+    // for tesseracts it's sufficient to keep this as a scalar, but it really
+    // should be a tensor of shape Bivec4 -> Bivec4
+    pub moment_inertia_scalar: f32,
     pub material: Material,
     pub stationary: bool,
 
@@ -22,18 +25,33 @@ pub struct Body {
 }
 
 impl Body {
-    pub fn resolve_collision(&mut self, collision: &Collision, negate: bool) {
+    pub fn resolve_collision(
+        &mut self,
+        collision: &CollisionResponse,
+        negate: bool,
+    ) {
         if !self.stationary {
             let mut impulse = collision.impulse;
             let mut projection = collision.projection;
+            let mut contact = &collision.contact_b;
 
             if negate {
                 impulse = -impulse;
                 projection = -projection;
+                contact = &collision.contact_a;
             }
+
+            let delta_angular_vel = self.inverse_moment_of_inertia(
+                &self
+                    .rotation
+                    .reverse()
+                    .rotate(&(*contact).into())
+                    .wedge_v(&self.rotation.reverse().rotate(&impulse.into())),
+            );
 
             self.vel += impulse / self.mass;
             self.pos += projection / self.mass;
+            self.angular_vel = self.angular_vel + delta_angular_vel;
         }
     }
 
@@ -45,5 +63,13 @@ impl Body {
             self.pos += self.vel * dt;
             self.rotation.update(&(dt * self.angular_vel));
         }
+    }
+
+    pub fn inverse_moment_of_inertia(&self, body_bivec: &Bivec4) -> Bivec4 {
+        if self.moment_inertia_scalar <= 0.0 {
+            return Bivec4::zero();
+        }
+
+        1.0 / self.moment_inertia_scalar * *body_bivec
     }
 }

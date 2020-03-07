@@ -42,6 +42,18 @@ impl Vec4 {
         }
     }
 
+    pub fn wedge_v(&self, v: &Vec4) -> Bivec4 {
+        let u = self;
+        Bivec4 {
+            xy: u.x * v.y - u.y * v.x,
+            xz: u.x * v.z - u.z * v.x,
+            xw: -u.w * v.x + u.x * v.w,
+            yz: u.y * v.z - u.z * v.y,
+            yw: -u.w * v.y + u.y * v.w,
+            zw: -u.w * v.z + u.z * v.w,
+        }
+    }
+
     pub fn mul_bv(&self, b: &Bivec4) -> (Vec4, Trivec4) {
         (self.left_contract_bv(b), self.wedge_bv(b))
     }
@@ -85,6 +97,23 @@ impl Into<Vector4<f32>> for Vec4 {
 
 impl From<Vector4<f32>> for Vec4 {
     fn from(v: Vector4<f32>) -> Self {
+        Self {
+            x: v.x,
+            y: v.y,
+            z: v.z,
+            w: v.w,
+        }
+    }
+}
+
+impl Into<cgmath::Vector4<f32>> for Vec4 {
+    fn into(self) -> cgmath::Vector4<f32> {
+        cgmath::Vector4::new(self.x, self.y, self.z, self.w)
+    }
+}
+
+impl From<cgmath::Vector4<f32>> for Vec4 {
+    fn from(v: cgmath::Vector4<f32>) -> Self {
         Self {
             x: v.x,
             y: v.y,

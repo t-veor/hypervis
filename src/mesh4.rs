@@ -43,6 +43,18 @@ fn cube(
     indices.extend(new_indices.iter().map(|x| x + vertex_size));
 }
 
+pub fn floor(size: f32) -> Mesh4 {
+    let x = size / 2.0;
+    let color = [1.0f32; 4];
+
+    let mut vertices = Vec::new();
+    let mut indices = Vec::new();
+
+    cube(x, 1, 0.0, color, &mut vertices, &mut indices);
+
+    Mesh4 { vertices, indices }
+}
+
 pub fn tesseract(size: f32) -> Mesh4 {
     let x = size / 2.0;
 

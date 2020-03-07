@@ -2,7 +2,6 @@ use super::{GraphicsContext, SlicePlane, Transform4, Vertex4};
 
 use anyhow::{anyhow, Context, Result};
 
-pub const MAX_VERTEX_SIZE: wgpu::BufferAddress = 65536;
 pub const WORK_GROUP_SIZE: u32 = 256;
 
 pub struct SlicePipeline {
