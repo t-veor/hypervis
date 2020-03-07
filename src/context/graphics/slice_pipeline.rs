@@ -7,13 +7,9 @@ pub const WORK_GROUP_SIZE: u32 = 256;
 
 pub struct SlicePipeline {
     pipeline: wgpu::ComputePipeline,
-    uniform_bind_group: wgpu::BindGroup,
+    uniform_bind_group_layout: wgpu::BindGroupLayout,
     src_bind_group_layout: wgpu::BindGroupLayout,
-    dst_bind_group: wgpu::BindGroup,
-    slice_plane_buffer: wgpu::Buffer,
-    transform_buffer: wgpu::Buffer,
-    indirect_command_buffer: wgpu::Buffer,
-    dst_vertex_buffer: wgpu::Buffer,
+    dst_bind_group_layout: wgpu::BindGroupLayout,
 }
 
 #[repr(C)]
@@ -37,8 +33,14 @@ impl Default for DrawIndirectCommand {
 }
 
 pub struct MeshBinding {
-    bind_group: wgpu::BindGroup,
+    uniform_bind_group: wgpu::BindGroup,
+    src_bind_group: wgpu::BindGroup,
+    dst_bind_group: wgpu::BindGroup,
     simplex_count: u32,
+    slice_plane_buffer: wgpu::Buffer,
+    transform_buffer: wgpu::Buffer,
+    pub(super) indirect_command_buffer: wgpu::Buffer,
+    pub(super) dst_vertex_buffer: wgpu::Buffer,
 }
 
 fn ceil_div(x: u32, y: u32) -> u32 {
@@ -58,7 +60,7 @@ impl SlicePipeline {
             .context("Failed to load 'shaders/slice.comp' into WGPU")?;
         let shader_module = ctx.device.create_shader_module(&shader_data);
 
-        let uniform_layout = ctx.device.create_bind_group_layout(
+        let uniform_bind_group_layout = ctx.device.create_bind_group_layout(
             &wgpu::BindGroupLayoutDescriptor {
                 bindings: &[
                     wgpu::BindGroupLayoutBinding {
@@ -129,7 +131,7 @@ impl SlicePipeline {
         let pipeline_layout = ctx.device.create_pipeline_layout(
             &wgpu::PipelineLayoutDescriptor {
                 bind_group_layouts: &[
-                    &uniform_layout,
+                    &uniform_bind_group_layout,
                     &src_bind_group_layout,
                     &dst_bind_group_layout,
                 ],
@@ -145,6 +147,32 @@ impl SlicePipeline {
                 },
             },
         );
+
+        Ok(Self {
+            pipeline,
+            uniform_bind_group_layout,
+            src_bind_group_layout,
+            dst_bind_group_layout,
+        })
+    }
+
+    pub fn create_mesh_binding(
+        &self,
+        ctx: &GraphicsContext,
+        vertices: &Vec<Vertex4>,
+        indices: &Vec<u32>,
+    ) -> MeshBinding {
+        let simplex_count = (indices.len() / 4) as u32;
+        let vertex_buffer_size = (vertices.len()
+            * std::mem::size_of::<Vertex4>())
+            as wgpu::BufferAddress;
+        let index_buffer_size =
+            (indices.len() * std::mem::size_of::<u32>()) as wgpu::BufferAddress;
+
+        // overestimate of how many triangles can be generated
+        let dst_vertex_buffer_size =
+            (simplex_count * 12 * std::mem::size_of::<Vertex4>() as u32)
+                as wgpu::BufferAddress;
 
         let slice_plane_buffer = ctx
             .device
@@ -174,82 +202,9 @@ impl SlicePipeline {
 
         let dst_vertex_buffer =
             ctx.device.create_buffer(&wgpu::BufferDescriptor {
-                size: MAX_VERTEX_SIZE
-                    * std::mem::size_of::<Vertex4>() as wgpu::BufferAddress,
+                size: dst_vertex_buffer_size,
                 usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::VERTEX,
             });
-
-        let uniform_bind_group =
-            ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                layout: &uniform_layout,
-                bindings: &[
-                    wgpu::Binding {
-                        binding: 0,
-                        resource: wgpu::BindingResource::Buffer {
-                            buffer: &slice_plane_buffer,
-                            range: 0..std::mem::size_of::<SlicePlane>()
-                                as wgpu::BufferAddress,
-                        },
-                    },
-                    wgpu::Binding {
-                        binding: 1,
-                        resource: wgpu::BindingResource::Buffer {
-                            buffer: &transform_buffer,
-                            range: 0..std::mem::size_of::<Transform4>()
-                                as wgpu::BufferAddress,
-                        },
-                    },
-                ],
-            });
-
-        let dst_bind_group =
-            ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                layout: &dst_bind_group_layout,
-                bindings: &[
-                    wgpu::Binding {
-                        binding: 0,
-                        resource: wgpu::BindingResource::Buffer {
-                            buffer: &indirect_command_buffer,
-                            range: 0..std::mem::size_of::<u32>()
-                                as wgpu::BufferAddress,
-                        },
-                    },
-                    wgpu::Binding {
-                        binding: 1,
-                        resource: wgpu::BindingResource::Buffer {
-                            buffer: &dst_vertex_buffer,
-                            range: 0..MAX_VERTEX_SIZE
-                                * std::mem::size_of::<Vertex4>()
-                                    as wgpu::BufferAddress,
-                        },
-                    },
-                ],
-            });
-
-        Ok(Self {
-            pipeline,
-            uniform_bind_group,
-            src_bind_group_layout,
-            dst_bind_group,
-            slice_plane_buffer,
-            transform_buffer,
-            indirect_command_buffer,
-            dst_vertex_buffer,
-        })
-    }
-
-    pub fn create_mesh_binding(
-        &self,
-        ctx: &GraphicsContext,
-        vertices: &Vec<Vertex4>,
-        indices: &Vec<u32>,
-    ) -> MeshBinding {
-        let simplex_count = (indices.len() / 4) as u32;
-        let vertex_buffer_size = (vertices.len()
-            * std::mem::size_of::<Vertex4>())
-            as wgpu::BufferAddress;
-        let index_buffer_size =
-            (indices.len() * std::mem::size_of::<u32>()) as wgpu::BufferAddress;
 
         let simplex_count_buffer = ctx
             .device
@@ -275,7 +230,7 @@ impl SlicePipeline {
             )
             .fill_from_slice(indices);
 
-        let bind_group =
+        let src_bind_group =
             ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
                 layout: &self.src_bind_group_layout,
                 bindings: &[
@@ -304,18 +259,61 @@ impl SlicePipeline {
                 ],
             });
 
+        let uniform_bind_group =
+            ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                layout: &self.uniform_bind_group_layout,
+                bindings: &[
+                    wgpu::Binding {
+                        binding: 0,
+                        resource: wgpu::BindingResource::Buffer {
+                            buffer: &slice_plane_buffer,
+                            range: 0..std::mem::size_of::<SlicePlane>()
+                                as wgpu::BufferAddress,
+                        },
+                    },
+                    wgpu::Binding {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Buffer {
+                            buffer: &transform_buffer,
+                            range: 0..std::mem::size_of::<Transform4>()
+                                as wgpu::BufferAddress,
+                        },
+                    },
+                ],
+            });
+
+        let dst_bind_group =
+            ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                layout: &self.dst_bind_group_layout,
+                bindings: &[
+                    wgpu::Binding {
+                        binding: 0,
+                        resource: wgpu::BindingResource::Buffer {
+                            buffer: &indirect_command_buffer,
+                            range: 0..std::mem::size_of::<u32>()
+                                as wgpu::BufferAddress,
+                        },
+                    },
+                    wgpu::Binding {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Buffer {
+                            buffer: &dst_vertex_buffer,
+                            range: 0..dst_vertex_buffer_size,
+                        },
+                    },
+                ],
+            });
+
         MeshBinding {
-            bind_group,
+            uniform_bind_group,
+            src_bind_group,
+            dst_bind_group,
             simplex_count,
+            slice_plane_buffer,
+            transform_buffer,
+            indirect_command_buffer,
+            dst_vertex_buffer,
         }
-    }
-
-    pub fn indirect_command_buffer(&self) -> &wgpu::Buffer {
-        &self.indirect_command_buffer
-    }
-
-    pub fn dst_vertex_buffer(&self) -> &wgpu::Buffer {
-        &self.dst_vertex_buffer
     }
 
     pub fn render_mesh(
@@ -334,7 +332,7 @@ impl SlicePipeline {
         encoder.copy_buffer_to_buffer(
             &slice_staging_buffer,
             0,
-            &self.slice_plane_buffer,
+            &mesh.slice_plane_buffer,
             0,
             std::mem::size_of::<SlicePlane>() as wgpu::BufferAddress,
         );
@@ -347,7 +345,7 @@ impl SlicePipeline {
         encoder.copy_buffer_to_buffer(
             &transform_staging_buffer,
             0,
-            &self.transform_buffer,
+            &mesh.transform_buffer,
             0,
             std::mem::size_of::<Transform4>() as wgpu::BufferAddress,
         );
@@ -360,7 +358,7 @@ impl SlicePipeline {
         encoder.copy_buffer_to_buffer(
             &command_staging_buffer,
             0,
-            &self.indirect_command_buffer,
+            &mesh.indirect_command_buffer,
             0,
             std::mem::size_of::<DrawIndirectCommand>() as wgpu::BufferAddress,
         );
@@ -368,9 +366,9 @@ impl SlicePipeline {
         // Compute into the destination bind group
         let mut compute_pass = encoder.begin_compute_pass();
         compute_pass.set_pipeline(&self.pipeline);
-        compute_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
-        compute_pass.set_bind_group(1, &mesh.bind_group, &[]);
-        compute_pass.set_bind_group(2, &self.dst_bind_group, &[]);
+        compute_pass.set_bind_group(0, &mesh.uniform_bind_group, &[]);
+        compute_pass.set_bind_group(1, &mesh.src_bind_group, &[]);
+        compute_pass.set_bind_group(2, &mesh.dst_bind_group, &[]);
         compute_pass.dispatch(
             ceil_div(mesh.simplex_count, WORK_GROUP_SIZE),
             1,

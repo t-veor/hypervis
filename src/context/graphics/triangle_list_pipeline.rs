@@ -1,4 +1,6 @@
-use super::{GraphicsContext, Vertex4, ViewProjection, DEPTH_FORMAT};
+use super::{
+    GraphicsContext, MeshBinding, Vertex4, ViewProjection, DEPTH_FORMAT,
+};
 
 use anyhow::{anyhow, Context, Result};
 
@@ -142,12 +144,11 @@ impl TriangleListPipeline {
     pub fn render(
         &self,
         render_pass: &mut wgpu::RenderPass,
-        indirect_command_buffer: &wgpu::Buffer,
-        vertex_buffer: &wgpu::Buffer,
+        mesh: &MeshBinding,
     ) {
         render_pass.set_pipeline(&self.pipeline);
-        render_pass.set_vertex_buffers(0, &[(vertex_buffer, 0)]);
+        render_pass.set_vertex_buffers(0, &[(&mesh.dst_vertex_buffer, 0)]);
         render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
-        render_pass.draw_indirect(indirect_command_buffer, 0);
+        render_pass.draw_indirect(&mesh.indirect_command_buffer, 0);
     }
 }

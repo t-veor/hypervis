@@ -1,4 +1,4 @@
-use super::Collider;
+use super::{Collider, Collision};
 use crate::alg::{Bivec4, Rotor4};
 use cgmath::Vector4;
 
@@ -22,9 +22,18 @@ pub struct Body {
 }
 
 impl Body {
-    pub fn apply_impulse(&mut self, impulse: Vector4<f32>) {
+    pub fn resolve_collision(&mut self, collision: &Collision, negate: bool) {
         if !self.stationary {
+            let mut impulse = collision.impulse;
+            let mut projection = collision.projection;
+
+            if negate {
+                impulse = -impulse;
+                projection = -projection;
+            }
+
             self.vel += impulse / self.mass;
+            self.pos += projection / self.mass;
         }
     }
 

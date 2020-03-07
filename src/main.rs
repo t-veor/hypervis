@@ -14,17 +14,17 @@ use context::graphics::{
     ViewProjection, DEPTH_FORMAT,
 };
 use context::{Application, Ctx};
+use physics::{Body, Collider, Material};
+use world::{Object, World};
 
 struct TestApp {
     render_pipeline: TriangleListPipeline,
     slice_pipeline: SlicePipeline,
-    mesh_binding: MeshBinding,
     slice_plane: SlicePlane,
     depth_texture: wgpu::Texture,
     depth_texture_view: wgpu::TextureView,
     view_proj: ViewProjection,
-    angular_vel: alg::Bivec4,
-    rotor: alg::Rotor4,
+    world: World,
     frames: usize,
 }
 
@@ -44,7 +44,7 @@ impl Application for TestApp {
 
         let orthogonal = SlicePlane {
             normal: Vector4::new(0.0, 0.0, 0.0, 1.0),
-            base_point: Vector4::new(0.0, 0.0, 0.0, 0.5),
+            base_point: Vector4::new(0.0, 0.0, 0.0, 0.0),
             #[rustfmt::skip]
             proj_matrix: Matrix4::new(
                 1.0, 0.0, 0.0, 0.0,
@@ -56,21 +56,48 @@ impl Application for TestApp {
 
         let slice_plane = orthogonal;
 
-        let rotor = alg::Rotor4::identity();
-        let angular_vel = alg::Bivec4::new(0.0, 0.0, 0.1, 0.0, 0.1, 0.1);
-
-        let view_proj = ViewProjection::new(ctx);
-
         let render_pipeline =
             TriangleListPipeline::new(&ctx.graphics_ctx).unwrap();
         let slice_pipeline = SlicePipeline::new(&ctx.graphics_ctx).unwrap();
 
-        let mesh = mesh4::cell_120();
+        let mut world = World::new();
+        world.objects.push(Object {
+            body: Body {
+                mass: 0.0,
+                material: Material { restitution: 0.4 },
+                stationary: true,
+                pos: Vector4::zero(),
+                vel: Vector4::zero(),
+                rotation: alg::Rotor4::identity(),
+                angular_vel: alg::Bivec4::zero(),
+                collider: Collider::HalfPlane {
+                    normal: Vector4::unit_y(),
+                },
+            },
+            mesh_binding: None,
+        });
+
+        let mesh = mesh4::tesseract(1.0);
         let mesh_binding = slice_pipeline.create_mesh_binding(
             &ctx.graphics_ctx,
             &mesh.vertices,
             &mesh.indices,
         );
+        world.objects.push(Object {
+            body: Body {
+                mass: 1.0,
+                material: Material { restitution: 0.4 },
+                stationary: false,
+                pos: Vector4::unit_y(),
+                vel: Vector4::new(0.0, 1.0, 0.0, 0.0),
+                rotation: alg::Rotor4::identity(),
+                angular_vel: alg::Bivec4::new(0.0, 0.0, 1.0, 0.0, 0.0, 0.0),
+                collider: Collider::Tesseract { half_width: 0.5 },
+            },
+            mesh_binding: Some(mesh_binding),
+        });
+
+        let view_proj = ViewProjection::new(ctx);
 
         let depth_texture =
             ctx.graphics_ctx
@@ -86,12 +113,10 @@ impl Application for TestApp {
             render_pipeline,
             slice_pipeline,
             slice_plane,
-            mesh_binding,
             depth_texture,
             depth_texture_view,
             view_proj,
-            rotor,
-            angular_vel,
+            world,
             frames: 0,
         }
     }
@@ -118,15 +143,8 @@ impl Application for TestApp {
     }
 
     fn update(&mut self, _ctx: &mut Ctx) {
-        // Update the slice
-        let scale = (self.frames % 600) as f32 / 600.0 * 2.0 - 1.0;
-        self.slice_plane.base_point = Vector4::new(0.0, 0.0, 0.0, scale);
-
-        // Update the rotation
-        // println!("{}", self.frames);
         let dt = 1f32 / 60f32;
-        self.rotor.update(&(dt * self.angular_vel.clone()));
-        // println!("{:?}", self.rotor);
+        self.world.update(dt);
     }
 
     fn render(&mut self, ctx: &mut Ctx) {
@@ -134,16 +152,11 @@ impl Application for TestApp {
             &wgpu::CommandEncoderDescriptor { todo: 0 },
         );
 
-        let transform = Transform4 {
-            displacement: Vector4::zero(),
-            transform: self.rotor.to_matrix(),
-        };
-        self.slice_pipeline.render_mesh(
-            &ctx.graphics_ctx,
+        self.world.compute(
+            ctx,
+            &self.slice_pipeline,
             &mut encoder,
             &self.slice_plane,
-            &transform,
-            &self.mesh_binding,
         );
 
         // for some reason I need to do the compute and render passes in two
@@ -188,11 +201,7 @@ impl Application for TestApp {
                     ),
                 });
 
-            self.render_pipeline.render(
-                &mut render_pass,
-                self.slice_pipeline.indirect_command_buffer(),
-                self.slice_pipeline.dst_vertex_buffer(),
-            );
+            self.world.render(&self.render_pipeline, &mut render_pass);
         }
 
         ctx.graphics_ctx.queue.submit(&[encoder.finish()]);
