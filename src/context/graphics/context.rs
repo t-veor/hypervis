@@ -7,11 +7,10 @@ pub struct GraphicsContext {
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
     pub sc_desc: wgpu::SwapChainDescriptor,
-    pub swap_chain: wgpu::SwapChain,
 }
 
 impl GraphicsContext {
-    pub fn new(window: &Window) -> Result<Self> {
+    pub fn new(window: &Window) -> Result<(Self, wgpu::SwapChain)> {
         let size = window.inner_size();
         let surface = wgpu::Surface::create(window);
         let adapter = wgpu::Adapter::request(&wgpu::RequestAdapterOptions {
@@ -36,20 +35,15 @@ impl GraphicsContext {
         };
         let swap_chain = device.create_swap_chain(&surface, &sc_desc);
 
-        Ok(Self {
-            surface,
-            adapter,
-            device,
-            queue,
-            sc_desc,
+        Ok((
+            Self {
+                surface,
+                adapter,
+                device,
+                queue,
+                sc_desc,
+            },
             swap_chain,
-        })
-    }
-
-    pub fn on_window_resize(&mut self, width: u32, height: u32) {
-        self.sc_desc.width = width;
-        self.sc_desc.height = height;
-        self.swap_chain =
-            self.device.create_swap_chain(&self.surface, &self.sc_desc);
+        ))
     }
 }

@@ -8,7 +8,12 @@ pub struct ViewProjection {
 }
 
 impl ViewProjection {
-    pub fn new(ctx: &Ctx) -> Self {
+    pub fn new(
+        ctx: &Ctx,
+        fovy: f32,
+        look_from: Point3<f32>,
+        look_at: Point3<f32>,
+    ) -> Self {
         #[rustfmt::skip]
         let opengl_to_wgpu_matrix = Matrix4::new(
             1.0, 0.0, 0.0, 0.0,
@@ -22,12 +27,8 @@ impl ViewProjection {
 
         Self {
             view_proj: opengl_to_wgpu_matrix
-                * cgmath::perspective(Deg(90.0), aspect, 0.1, 1000.0)
-                * Matrix4::look_at(
-                    Point3::new(1.0, 1.0, -2.0) * 2.0,
-                    Point3::new(0.0, 1.0, 0.0),
-                    Vector3::unit_y(),
-                ),
+                * cgmath::perspective(Deg(fovy), aspect, 0.1, 1000.0)
+                * Matrix4::look_at(look_from, look_at, Vector3::unit_y()),
         }
     }
 }

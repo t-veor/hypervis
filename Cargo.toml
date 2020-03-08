@@ -14,3 +14,6 @@ mint = "0.5"
 hsl = "0.1"
 rand = "0.7"
 smallvec = "1.2"
+imgui = "0.3"
+imgui-winit-support = { version = "0.3", features = ["winit-20"]}
+imgui-wgpu = "0.5"

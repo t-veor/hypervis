@@ -15,14 +15,24 @@ pub trait Application: 'static + Sized {
     fn resize(&mut self, ctx: &mut Ctx);
     fn on_event(&mut self, ctx: &mut Ctx, event: WindowEvent);
     fn update(&mut self, ctx: &mut Ctx);
-    fn render(&mut self, ctx: &mut Ctx);
+    fn render<'ui>(
+        &mut self,
+        ctx: &mut GraphicsContext,
+        frame: &wgpu::SwapChainOutput,
+        ui: &imgui::Ui<'ui>,
+    );
 }
 
 pub struct Ctx {
     pub window: Window,
     pub size: PhysicalSize<u32>,
+    pub swap_chain: wgpu::SwapChain,
 
     pub graphics_ctx: GraphicsContext,
+
+    pub imgui: imgui::Context,
+    pub imgui_platform: imgui_winit_support::WinitPlatform,
+    pub imgui_renderer: imgui_wgpu::Renderer,
 }
 
 impl Ctx {
@@ -37,12 +47,33 @@ impl Ctx {
             .build(event_loop)?;
         let size = window.inner_size();
 
-        let graphics_ctx = GraphicsContext::new(&window)?;
+        let (mut graphics_ctx, swap_chain) = GraphicsContext::new(&window)?;
+
+        let mut imgui = imgui::Context::create();
+        let mut imgui_platform =
+            imgui_winit_support::WinitPlatform::init(&mut imgui);
+        imgui_platform.attach_window(
+            imgui.io_mut(),
+            &window,
+            imgui_winit_support::HiDpiMode::Default,
+        );
+        imgui.set_ini_filename(None);
+        let imgui_renderer = imgui_wgpu::Renderer::new(
+            &mut imgui,
+            &graphics_ctx.device,
+            &mut graphics_ctx.queue,
+            graphics_ctx.sc_desc.format,
+            None,
+        );
 
         Ok(Self {
             window,
             size,
+            swap_chain,
             graphics_ctx,
+            imgui,
+            imgui_platform,
+            imgui_renderer,
         })
     }
 }
@@ -53,33 +84,65 @@ pub fn run<App: Application>(title: &str, size: (u32, u32)) -> Result<()> {
 
     let mut app = App::init(&mut ctx);
 
-    event_loop.run(move |event, _, control_flow| match event {
-        Event::WindowEvent { event, .. } => {
-            match event {
-                WindowEvent::CloseRequested => {
-                    *control_flow = ControlFlow::Exit
-                }
-                WindowEvent::Resized(size) => {
-                    ctx.graphics_ctx.sc_desc.width = size.width;
-                    ctx.graphics_ctx.sc_desc.height = size.height;
-                    ctx.graphics_ctx.swap_chain =
-                        ctx.graphics_ctx.device.create_swap_chain(
-                            &ctx.graphics_ctx.surface,
-                            &ctx.graphics_ctx.sc_desc,
-                        );
-                    app.resize(&mut ctx);
-                }
-                _ => (),
-            };
-            app.on_event(&mut ctx, event);
+    event_loop.run(move |event, _, control_flow| {
+        ctx.imgui_platform.handle_event(
+            ctx.imgui.io_mut(),
+            &ctx.window,
+            &event,
+        );
+
+        match event {
+            Event::WindowEvent { event, .. } => {
+                match event {
+                    WindowEvent::CloseRequested => {
+                        *control_flow = ControlFlow::Exit
+                    }
+                    WindowEvent::Resized(size) => {
+                        ctx.graphics_ctx.sc_desc.width = size.width;
+                        ctx.graphics_ctx.sc_desc.height = size.height;
+                        ctx.swap_chain =
+                            ctx.graphics_ctx.device.create_swap_chain(
+                                &ctx.graphics_ctx.surface,
+                                &ctx.graphics_ctx.sc_desc,
+                            );
+                        app.resize(&mut ctx);
+                    }
+                    _ => (),
+                };
+                app.on_event(&mut ctx, event);
+            }
+            Event::MainEventsCleared => {
+                app.update(&mut ctx);
+                ctx.window.request_redraw();
+            }
+            Event::RedrawRequested(_) => {
+                let frame = ctx.swap_chain.get_next_texture();
+                ctx.imgui_platform
+                    .prepare_frame(ctx.imgui.io_mut(), &ctx.window)
+                    .expect("Failed to prepare frame.");
+
+                let ui = ctx.imgui.frame();
+
+                app.render(&mut ctx.graphics_ctx, &frame, &ui);
+
+                let mut encoder =
+                    ctx.graphics_ctx.device.create_command_encoder(
+                        &wgpu::CommandEncoderDescriptor { todo: 0 },
+                    );
+
+                ctx.imgui_platform.prepare_render(&ui, &ctx.window);
+                ctx.imgui_renderer
+                    .render(
+                        ui.render(),
+                        &mut ctx.graphics_ctx.device,
+                        &mut encoder,
+                        &frame.view,
+                    )
+                    .expect("imgui rendering failed.");
+
+                ctx.graphics_ctx.queue.submit(&[encoder.finish()]);
+            }
+            _ => (),
         }
-        Event::MainEventsCleared => {
-            app.update(&mut ctx);
-            ctx.window.request_redraw();
-        }
-        Event::RedrawRequested(_) => {
-            app.render(&mut ctx);
-        }
-        _ => (),
     })
 }

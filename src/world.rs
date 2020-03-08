@@ -5,7 +5,7 @@ use crate::context::{
         MeshBinding, SlicePipeline, SlicePlane, Transform4,
         TriangleListPipeline,
     },
-    Ctx,
+    GraphicsContext,
 };
 use crate::physics::{calc_impulse, detect_collisions, Body};
 
@@ -17,7 +17,7 @@ pub struct Object {
 impl Object {
     pub fn compute(
         &self,
-        ctx: &Ctx,
+        graphics_ctx: &GraphicsContext,
         pipeline: &SlicePipeline,
         encoder: &mut wgpu::CommandEncoder,
         slice_plane: &SlicePlane,
@@ -28,7 +28,7 @@ impl Object {
                 transform: self.body.rotation.to_matrix(),
             };
             pipeline.render_mesh(
-                &ctx.graphics_ctx,
+                graphics_ctx,
                 encoder,
                 slice_plane,
                 &transform,
@@ -113,13 +113,13 @@ impl World {
 
     pub fn compute(
         &self,
-        ctx: &Ctx,
+        graphics_ctx: &GraphicsContext,
         pipeline: &SlicePipeline,
         encoder: &mut wgpu::CommandEncoder,
         slice_plane: &SlicePlane,
     ) {
         for i in self.objects.iter() {
-            i.compute(ctx, pipeline, encoder, slice_plane);
+            i.compute(graphics_ctx, pipeline, encoder, slice_plane);
         }
     }
 

@@ -7,14 +7,14 @@ mod physics;
 mod world;
 
 use anyhow::Result;
-use cgmath::{prelude::Zero, Matrix4, Vector4};
+use cgmath::{Matrix4, Point3, Vector4, Zero};
 use winit::event::WindowEvent;
 
 use context::graphics::{
     SlicePipeline, SlicePlane, TriangleListPipeline, ViewProjection,
     DEPTH_FORMAT,
 };
-use context::{Application, Ctx};
+use context::{Application, Ctx, GraphicsContext};
 use physics::{Body, Collider, Material};
 use world::{Object, World};
 
@@ -115,7 +115,12 @@ impl Application for TestApp {
             mesh_binding: Some(mesh_binding),
         });
 
-        let view_proj = ViewProjection::new(ctx);
+        let view_proj = ViewProjection::new(
+            ctx,
+            90.0,
+            Point3::new(2.0, 2.0, -4.0),
+            Point3::new(0.0, 1.0, 0.0),
+        );
 
         let depth_texture =
             ctx.graphics_ctx
@@ -141,7 +146,12 @@ impl Application for TestApp {
 
     fn resize(&mut self, ctx: &mut Ctx) {
         // update the projection
-        self.view_proj = ViewProjection::new(ctx);
+        self.view_proj = ViewProjection::new(
+            ctx,
+            90.0,
+            Point3::new(2.0, 2.0, -4.0),
+            Point3::new(0.0, 1.0, 0.0),
+        );
 
         self.depth_texture =
             ctx.graphics_ctx
@@ -165,13 +175,18 @@ impl Application for TestApp {
         self.world.update(dt);
     }
 
-    fn render(&mut self, ctx: &mut Ctx) {
-        let mut encoder = ctx.graphics_ctx.device.create_command_encoder(
+    fn render<'ui>(
+        &mut self,
+        graphics_ctx: &mut GraphicsContext,
+        frame: &wgpu::SwapChainOutput,
+        ui: &imgui::Ui<'ui>,
+    ) {
+        let mut encoder = graphics_ctx.device.create_command_encoder(
             &wgpu::CommandEncoderDescriptor { todo: 0 },
         );
 
         self.world.compute(
-            ctx,
+            graphics_ctx,
             &self.slice_pipeline,
             &mut encoder,
             &self.slice_plane,
@@ -179,16 +194,15 @@ impl Application for TestApp {
 
         // for some reason I need to do the compute and render passes in two
         // goes to have it work on vulkan without visual glitches
-        ctx.graphics_ctx.queue.submit(&[encoder.finish()]);
+        graphics_ctx.queue.submit(&[encoder.finish()]);
 
         self.render_pipeline
-            .update_view_proj(&mut ctx.graphics_ctx, &self.view_proj);
+            .update_view_proj(graphics_ctx, &self.view_proj);
 
-        let mut encoder = ctx.graphics_ctx.device.create_command_encoder(
+        let mut encoder = graphics_ctx.device.create_command_encoder(
             &wgpu::CommandEncoderDescriptor { todo: 0 },
         );
 
-        let frame = ctx.graphics_ctx.swap_chain.get_next_texture();
         {
             let mut render_pass =
                 encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -222,9 +236,11 @@ impl Application for TestApp {
             self.world.render(&self.render_pipeline, &mut render_pass);
         }
 
-        ctx.graphics_ctx.queue.submit(&[encoder.finish()]);
+        graphics_ctx.queue.submit(&[encoder.finish()]);
 
         self.frames += 1;
+
+        ui.show_demo_window(&mut true);
     }
 }
 
