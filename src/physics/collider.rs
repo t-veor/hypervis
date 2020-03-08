@@ -55,6 +55,6 @@ pub fn detect_collisions(a: &Body, b: &Body) -> Vec<CollisionInstance> {
             // Just call this again with the arguments swapped
             detect_collisions(b, a)
         }
-        _ => unimplemented!(),
+        _ => Vec::new(),
     }
 }

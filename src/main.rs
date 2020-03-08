@@ -29,6 +29,8 @@ struct TestApp {
     frames: usize,
 }
 
+const ARENA_SIZE: f32 = 2.0;
+
 impl Application for TestApp {
     fn init(ctx: &mut Ctx) -> Self {
         let _diagonal = SlicePlane {
@@ -63,7 +65,7 @@ impl Application for TestApp {
 
         let mut world = World::new();
 
-        let floor_mesh = mesh4::floor(4.0);
+        let floor_mesh = mesh4::floor(2.0 * ARENA_SIZE);
         let floor_mesh_binding = slice_pipeline.create_mesh_binding(
             &ctx.graphics_ctx,
             &floor_mesh.vertices,
@@ -86,6 +88,104 @@ impl Application for TestApp {
             mesh_binding: Some(floor_mesh_binding),
         });
 
+        // side walls
+        world.objects.push(Object {
+            body: Body {
+                mass: 0.0,
+                moment_inertia_scalar: 0.0,
+                material: Material { restitution: 0.4 },
+                stationary: true,
+                pos: -ARENA_SIZE * Vector4::unit_x(),
+                vel: Vector4::zero(),
+                rotation: alg::Rotor4::identity(),
+                angular_vel: alg::Bivec4::zero(),
+                collider: Collider::HalfSpace {
+                    normal: Vector4::unit_x(),
+                },
+            },
+            mesh_binding: None,
+        });
+        world.objects.push(Object {
+            body: Body {
+                mass: 0.0,
+                moment_inertia_scalar: 0.0,
+                material: Material { restitution: 0.4 },
+                stationary: true,
+                pos: ARENA_SIZE * Vector4::unit_x(),
+                vel: Vector4::zero(),
+                rotation: alg::Rotor4::identity(),
+                angular_vel: alg::Bivec4::zero(),
+                collider: Collider::HalfSpace {
+                    normal: -Vector4::unit_x(),
+                },
+            },
+            mesh_binding: None,
+        });
+        world.objects.push(Object {
+            body: Body {
+                mass: 0.0,
+                moment_inertia_scalar: 0.0,
+                material: Material { restitution: 0.4 },
+                stationary: true,
+                pos: -ARENA_SIZE * Vector4::unit_z(),
+                vel: Vector4::zero(),
+                rotation: alg::Rotor4::identity(),
+                angular_vel: alg::Bivec4::zero(),
+                collider: Collider::HalfSpace {
+                    normal: Vector4::unit_z(),
+                },
+            },
+            mesh_binding: None,
+        });
+        world.objects.push(Object {
+            body: Body {
+                mass: 0.0,
+                moment_inertia_scalar: 0.0,
+                material: Material { restitution: 0.4 },
+                stationary: true,
+                pos: ARENA_SIZE * Vector4::unit_z(),
+                vel: Vector4::zero(),
+                rotation: alg::Rotor4::identity(),
+                angular_vel: alg::Bivec4::zero(),
+                collider: Collider::HalfSpace {
+                    normal: -Vector4::unit_z(),
+                },
+            },
+            mesh_binding: None,
+        });
+        world.objects.push(Object {
+            body: Body {
+                mass: 0.0,
+                moment_inertia_scalar: 0.0,
+                material: Material { restitution: 0.4 },
+                stationary: true,
+                pos: -ARENA_SIZE * Vector4::unit_w(),
+                vel: Vector4::zero(),
+                rotation: alg::Rotor4::identity(),
+                angular_vel: alg::Bivec4::zero(),
+                collider: Collider::HalfSpace {
+                    normal: Vector4::unit_w(),
+                },
+            },
+            mesh_binding: None,
+        });
+        world.objects.push(Object {
+            body: Body {
+                mass: 0.0,
+                moment_inertia_scalar: 0.0,
+                material: Material { restitution: 0.4 },
+                stationary: true,
+                pos: ARENA_SIZE * Vector4::unit_w(),
+                vel: Vector4::zero(),
+                rotation: alg::Rotor4::identity(),
+                angular_vel: alg::Bivec4::zero(),
+                collider: Collider::HalfSpace {
+                    normal: -Vector4::unit_w(),
+                },
+            },
+            mesh_binding: None,
+        });
+
         let mesh = mesh4::tesseract(1.0);
         let mesh_binding = slice_pipeline.create_mesh_binding(
             &ctx.graphics_ctx,
@@ -101,11 +201,11 @@ impl Application for TestApp {
                 pos: Vector4::unit_y(),
                 vel: Vector4::new(0.0, 0.0, 0.0, 0.0),
                 rotation: alg::Bivec4::new(
-                    std::f32::consts::PI / 8.0 - 0.1,
+                    std::f32::consts::PI / 8.0,
                     0.0,
-                    20.0,
-                    30.0,
-                    40.0,
+                    0.0,
+                    0.0,
+                    0.0,
                     0.0,
                 )
                 .exp(),
@@ -181,6 +281,16 @@ impl Application for TestApp {
         frame: &wgpu::SwapChainOutput,
         ui: &imgui::Ui<'ui>,
     ) {
+        use imgui::*;
+        Window::new(im_str!("w-axis control")).build(ui, || {
+            VerticalSlider::new(
+                im_str!(""),
+                [120.0, 480.0],
+                -ARENA_SIZE..=ARENA_SIZE,
+            )
+            .build(ui, &mut self.slice_plane.base_point.w);
+        });
+
         let mut encoder = graphics_ctx.device.create_command_encoder(
             &wgpu::CommandEncoderDescriptor { todo: 0 },
         );
@@ -239,8 +349,6 @@ impl Application for TestApp {
         graphics_ctx.queue.submit(&[encoder.finish()]);
 
         self.frames += 1;
-
-        ui.show_demo_window(&mut true);
     }
 }
 
