@@ -103,13 +103,13 @@ impl Application for TestApp {
                 rotation: alg::Bivec4::new(
                     std::f32::consts::PI / 8.0 - 0.1,
                     0.0,
-                    0.0,
-                    0.0,
-                    0.0,
+                    20.0,
+                    30.0,
+                    40.0,
                     0.0,
                 )
                 .exp(),
-                angular_vel: alg::Bivec4::new(1.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+                angular_vel: alg::Bivec4::new(1.0, 0.0, 1.0, 0.0, 0.0, 1.0),
                 collider: Collider::Tesseract { half_width: 0.5 },
             },
             mesh_binding: Some(mesh_binding),

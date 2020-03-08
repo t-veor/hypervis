@@ -1,5 +1,5 @@
 use super::{Collider, CollisionResponse};
-use crate::alg::{Bivec4, Rotor4};
+use crate::alg::{Bivec4, Rotor4, Vec4};
 use cgmath::Vector4;
 
 #[derive(Debug, Clone)]
@@ -25,27 +25,15 @@ pub struct Body {
 }
 
 impl Body {
-    pub fn resolve_collision(
+    pub fn resolve_impulse(
         &mut self,
-        collision: &CollisionResponse,
-        negate: bool,
+        impulse: Vector4<f32>,
+        projection: Vector4<f32>,
+        body_contact: Vector4<f32>,
     ) {
         if !self.stationary {
-            let mut impulse = collision.impulse;
-            let mut projection = collision.projection;
-            let mut contact = &collision.contact_b;
-
-            if negate {
-                impulse = -impulse;
-                projection = -projection;
-                contact = &collision.contact_a;
-            }
-
             let delta_angular_vel = self.inverse_moment_of_inertia(
-                &self
-                    .rotation
-                    .reverse()
-                    .rotate(&(*contact - self.pos).into())
+                &Vec4::from(body_contact)
                     .wedge_v(&self.rotation.reverse().rotate(&impulse.into())),
             );
 
@@ -71,5 +59,12 @@ impl Body {
         }
 
         1.0 / self.moment_inertia_scalar * *body_bivec
+    }
+
+    pub fn world_to_body(&self, v: Vector4<f32>) -> Vector4<f32> {
+        self.rotation
+            .reverse()
+            .rotate(&(v - self.pos).into())
+            .into()
     }
 }

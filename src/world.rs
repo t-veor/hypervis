@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::context::{
     graphics::{
         MeshBinding, SlicePipeline, SlicePlane, Transform4,
@@ -5,7 +7,7 @@ use crate::context::{
     },
     Ctx,
 };
-use crate::physics::{collide, Body};
+use crate::physics::{calc_impulse, detect_collisions, Body};
 
 pub struct Object {
     pub body: Body,
@@ -59,18 +61,49 @@ impl World {
 
     pub fn update(&mut self, dt: f32) {
         let mut collisions = Vec::new();
-
+        let mut mass_adjustments = HashMap::new();
         for i in 0..self.objects.len() {
             for j in i + 1..self.objects.len() {
-                collide(&self.objects[i].body, &self.objects[j].body)
-                    .drain(0..)
-                    .for_each(|collision| collisions.push((i, j, collision)))
+                let mut new_collisions = detect_collisions(
+                    &self.objects[i].body,
+                    &self.objects[j].body,
+                );
+                *mass_adjustments.entry(i).or_insert(0) += new_collisions.len();
+                *mass_adjustments.entry(j).or_insert(0) += new_collisions.len();
+                collisions.extend(new_collisions.drain(0..).map(|x| (i, j, x)));
             }
         }
 
+        let mut impulses = Vec::new();
         for (i, j, collision) in collisions {
-            self.objects[i].body.resolve_collision(&collision, true);
-            self.objects[j].body.resolve_collision(&collision, false);
+            if let Some(response) = calc_impulse(
+                &collision,
+                &self.objects[i].body,
+                mass_adjustments[&i] as f32,
+                &self.objects[j].body,
+                mass_adjustments[&j] as f32,
+            ) {
+                impulses.push((
+                    i,
+                    -response.impulse,
+                    -response.projection,
+                    collision.body_contact_a,
+                ));
+                impulses.push((
+                    j,
+                    response.impulse,
+                    response.projection,
+                    collision.body_contact_b,
+                ));
+            }
+        }
+
+        for (i, impulse, projection, body_contact) in impulses {
+            self.objects[i].body.resolve_impulse(
+                impulse,
+                projection,
+                body_contact,
+            );
         }
 
         for object in self.objects.iter_mut() {
