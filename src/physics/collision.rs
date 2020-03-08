@@ -105,7 +105,7 @@ pub fn calc_impulse(
 
     let mut friction = -rel_vel.dot(tangent)
         / (inv_a_mass + inv_b_mass + inv_l_tangent_a + inv_l_tangent_b);
-    let mu = 0.4;
+    let mu = 1.0;
     if friction.abs() > impulse * mu {
         friction = -impulse * mu;
     }

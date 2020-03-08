@@ -200,16 +200,8 @@ impl Application for TestApp {
                 stationary: false,
                 pos: Vector4::unit_y(),
                 vel: Vector4::new(0.0, 0.0, 0.0, 0.0),
-                rotation: alg::Bivec4::new(
-                    std::f32::consts::PI / 8.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                )
-                .exp(),
-                angular_vel: alg::Bivec4::new(1.0, 0.0, 1.0, 0.0, 0.0, 1.0),
+                rotation: alg::Rotor4::identity(),
+                angular_vel: alg::Bivec4::new(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
                 collider: Collider::Tesseract { half_width: 0.5 },
             },
             mesh_binding: Some(mesh_binding),
@@ -289,6 +281,31 @@ impl Application for TestApp {
                 -ARENA_SIZE..=ARENA_SIZE,
             )
             .build(ui, &mut self.slice_plane.base_point.w);
+        });
+
+        Window::new(im_str!("tesseract control")).build(ui, || {
+            ui.text("velocity");
+            Slider::new(im_str!("x"), -10.0..=10.0)
+                .build(ui, &mut self.world.objects[7].body.vel.x);
+            Slider::new(im_str!("y"), -10.0..=10.0)
+                .build(ui, &mut self.world.objects[7].body.vel.y);
+            Slider::new(im_str!("z"), -10.0..=10.0)
+                .build(ui, &mut self.world.objects[7].body.vel.z);
+            Slider::new(im_str!("w"), -10.0..=10.0)
+                .build(ui, &mut self.world.objects[7].body.vel.w);
+            ui.text("angular velocity");
+            Slider::new(im_str!("xy"), -10.0..=10.0)
+                .build(ui, &mut self.world.objects[7].body.angular_vel.xy);
+            Slider::new(im_str!("xz"), -10.0..=10.0)
+                .build(ui, &mut self.world.objects[7].body.angular_vel.xz);
+            Slider::new(im_str!("xw"), -10.0..=10.0)
+                .build(ui, &mut self.world.objects[7].body.angular_vel.xw);
+            Slider::new(im_str!("yz"), -10.0..=10.0)
+                .build(ui, &mut self.world.objects[7].body.angular_vel.yz);
+            Slider::new(im_str!("yw"), -10.0..=10.0)
+                .build(ui, &mut self.world.objects[7].body.angular_vel.yw);
+            Slider::new(im_str!("zw"), -10.0..=10.0)
+                .build(ui, &mut self.world.objects[7].body.angular_vel.zw);
         });
 
         let mut encoder = graphics_ctx.device.create_command_encoder(
