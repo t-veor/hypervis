@@ -15,7 +15,7 @@ pub struct CollisionResponse {
     pub contact_b: Vector4<f32>,
 }
 
-pub fn detect_collision(a: &Body, b: &Body) -> Option<CollisionInstance> {
+pub fn detect_collision(a: &Body, b: &Body) -> Vec<CollisionInstance> {
     match (&a.collider, &b.collider) {
         (
             Collider::HalfSpace { normal },
@@ -51,21 +51,18 @@ pub fn detect_collision(a: &Body, b: &Body) -> Option<CollisionInstance> {
                 }
             }
 
-            let contact_point = contact_points
-                .iter()
-                .fold(Vector4::zero(), |sum, i| sum + i)
-                / contact_points.len() as f32;
-
+            let mut instances = Vec::new();
             if plane_distance - tesseract_distance > 0.0 {
-                Some(CollisionInstance {
-                    normal: *normal,
-                    depth: plane_distance - tesseract_distance,
-                    contact_a: a.pos,
-                    contact_b: contact_point,
-                })
-            } else {
-                None
+                for contact_point in contact_points {
+                    instances.push(CollisionInstance {
+                        normal: *normal,
+                        depth: plane_distance - tesseract_distance,
+                        contact_a: a.pos,
+                        contact_b: contact_point,
+                    });
+                }
             }
+            instances
         }
         (Collider::Tesseract { .. }, Collider::HalfSpace { .. }) => {
             // Just call this again with the arguments swapped
@@ -75,111 +72,122 @@ pub fn detect_collision(a: &Body, b: &Body) -> Option<CollisionInstance> {
     }
 }
 
-pub fn collide(a: &Body, b: &Body) -> Option<CollisionResponse> {
-    detect_collision(a, b).and_then(
-        |CollisionInstance {
-             normal,
-             depth,
-             contact_a,
-             contact_b,
-         }| {
-            let body_contact_a =
-                a.rotation.reverse().rotate(&(contact_a - a.pos).into());
-            let body_contact_b =
-                b.rotation.reverse().rotate(&(contact_b - b.pos).into());
-            let body_rot_vel_a =
-                body_contact_a.left_contract_bv(&a.angular_vel);
-            let body_rot_vel_b =
-                body_contact_b.left_contract_bv(&b.angular_vel);
-            let rot_vel_a: Vector4<f32> =
-                a.rotation.rotate(&body_rot_vel_a).into();
-            let rot_vel_b: Vector4<f32> =
-                b.rotation.rotate(&body_rot_vel_b).into();
+pub fn collide(a: &Body, b: &Body) -> Vec<CollisionResponse> {
+    let mut instances = detect_collision(a, b);
+    let instance_len = instances.len();
+    instances
+        .drain(0..)
+        .filter_map(
+            |CollisionInstance {
+                 normal,
+                 depth,
+                 contact_a,
+                 contact_b,
+             }| {
+                let body_contact_a =
+                    a.rotation.reverse().rotate(&(contact_a - a.pos).into());
+                let body_contact_b =
+                    b.rotation.reverse().rotate(&(contact_b - b.pos).into());
+                let body_rot_vel_a =
+                    body_contact_a.left_contract_bv(&a.angular_vel);
+                let body_rot_vel_b =
+                    body_contact_b.left_contract_bv(&b.angular_vel);
+                let rot_vel_a: Vector4<f32> =
+                    a.rotation.rotate(&body_rot_vel_a).into();
+                let rot_vel_b: Vector4<f32> =
+                    b.rotation.rotate(&body_rot_vel_b).into();
 
-            let rel_vel = b.vel + rot_vel_b - a.vel - rot_vel_a;
-            let rel_vel_normal = rel_vel.dot(normal);
-            if rel_vel_normal > 0.0 {
-                return None;
-            }
+                let rel_vel = b.vel + rot_vel_b - a.vel - rot_vel_a;
+                let rel_vel_normal = rel_vel.dot(normal);
+                if rel_vel_normal > 0.0 {
+                    return None;
+                }
 
-            let e = a.material.restitution.min(b.material.restitution);
+                let e = a.material.restitution.min(b.material.restitution);
 
-            let inv_a_mass = if a.mass > 0.0 { 1.0 / a.mass } else { 0.0 };
-            let inv_b_mass = if b.mass > 0.0 { 1.0 / b.mass } else { 0.0 };
+                let inv_a_mass = if a.mass > 0.0 { 1.0 / a.mass } else { 0.0 };
+                let inv_b_mass = if b.mass > 0.0 { 1.0 / b.mass } else { 0.0 };
 
-            let body_normal_a = a.rotation.reverse().rotate(&normal.into());
-            let body_normal_b = b.rotation.reverse().rotate(&normal.into());
+                let body_normal_a = a.rotation.reverse().rotate(&normal.into());
+                let body_normal_b = b.rotation.reverse().rotate(&normal.into());
 
-            let inv_l_a = normal.dot(
-                a.rotation
-                    .rotate(&body_contact_a.left_contract_bv(
-                        &a.inverse_moment_of_inertia(
-                            &body_contact_a.wedge_v(&body_normal_a),
-                        ),
-                    ))
-                    .into(),
-            );
-            let inv_l_b = normal.dot(
-                b.rotation
-                    .rotate(&body_contact_b.left_contract_bv(
-                        &b.inverse_moment_of_inertia(
-                            &body_contact_b.wedge_v(&body_normal_b),
-                        ),
-                    ))
-                    .into(),
-            );
+                let inv_l_a = normal.dot(
+                    a.rotation
+                        .rotate(&body_contact_a.left_contract_bv(
+                            &a.inverse_moment_of_inertia(
+                                &body_contact_a.wedge_v(&body_normal_a),
+                            ),
+                        ))
+                        .into(),
+                );
+                let inv_l_b = normal.dot(
+                    b.rotation
+                        .rotate(&body_contact_b.left_contract_bv(
+                            &b.inverse_moment_of_inertia(
+                                &body_contact_b.wedge_v(&body_normal_b),
+                            ),
+                        ))
+                        .into(),
+                );
 
-            let impulse = -(1.0 + e) * rel_vel_normal
-                / (inv_a_mass + inv_b_mass + inv_l_a + inv_l_b);
+                let impulse = -(1.0 + e) * rel_vel_normal
+                    / (inv_a_mass + inv_b_mass + inv_l_a + inv_l_b);
 
-            let mut tangent =
-                (rel_vel - rel_vel.dot(normal) * normal).normalize();
-            if !tangent.is_finite() {
-                tangent = Vector4::zero();
-            }
+                let mut tangent =
+                    (rel_vel - rel_vel.dot(normal) * normal).normalize();
+                if !tangent.is_finite() {
+                    tangent = Vector4::zero();
+                }
 
-            let body_tangent_a = a.rotation.reverse().rotate(&tangent.into());
-            let body_tangent_b = b.rotation.reverse().rotate(&tangent.into());
+                let body_tangent_a =
+                    a.rotation.reverse().rotate(&tangent.into());
+                let body_tangent_b =
+                    b.rotation.reverse().rotate(&tangent.into());
 
-            let inv_l_tangent_a = tangent.dot(
-                a.rotation
-                    .rotate(&body_contact_a.left_contract_bv(
-                        &a.inverse_moment_of_inertia(
-                            &body_contact_a.wedge_v(&body_tangent_a),
-                        ),
-                    ))
-                    .into(),
-            );
-            let inv_l_tangent_b = tangent.dot(
-                b.rotation
-                    .rotate(&body_contact_b.left_contract_bv(
-                        &b.inverse_moment_of_inertia(
-                            &body_contact_b.wedge_v(&body_tangent_b),
-                        ),
-                    ))
-                    .into(),
-            );
+                let inv_l_tangent_a = tangent.dot(
+                    a.rotation
+                        .rotate(&body_contact_a.left_contract_bv(
+                            &a.inverse_moment_of_inertia(
+                                &body_contact_a.wedge_v(&body_tangent_a),
+                            ),
+                        ))
+                        .into(),
+                );
+                let inv_l_tangent_b = tangent.dot(
+                    b.rotation
+                        .rotate(&body_contact_b.left_contract_bv(
+                            &b.inverse_moment_of_inertia(
+                                &body_contact_b.wedge_v(&body_tangent_b),
+                            ),
+                        ))
+                        .into(),
+                );
 
-            let mut friction = -rel_vel.dot(tangent)
-                / (inv_a_mass + inv_b_mass + inv_l_tangent_a + inv_l_tangent_b);
-            let mu = 0.4;
-            if friction.abs() > impulse * mu {
-                friction = -impulse * mu;
-            }
+                let mut friction = -rel_vel.dot(tangent)
+                    / (inv_a_mass
+                        + inv_b_mass
+                        + inv_l_tangent_a
+                        + inv_l_tangent_b);
+                let mu = 0.4;
+                if friction.abs() > impulse * mu {
+                    friction = -impulse * mu;
+                }
 
-            // Do some linear projection to stop bodies from just sinking into
-            // each other
-            let slop_limit = 0.01f32;
-            let slop_amount = 0.2f32;
-            let projection =
-                (depth - slop_limit).max(0.0) * slop_amount * normal;
+                // Do some linear projection to stop bodies from just sinking into
+                // each other
+                let slop_limit = 0.01f32;
+                let slop_amount = 0.2f32;
+                let projection =
+                    (depth - slop_limit).max(0.0) * slop_amount * normal;
 
-            Some(CollisionResponse {
-                impulse: impulse * normal + friction * tangent,
-                projection,
-                contact_a,
-                contact_b,
-            })
-        },
-    )
+                Some(CollisionResponse {
+                    impulse: (impulse * normal + friction * tangent)
+                        / instance_len as f32,
+                    projection,
+                    contact_a,
+                    contact_b,
+                })
+            },
+        )
+        .collect()
 }

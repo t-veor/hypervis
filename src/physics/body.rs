@@ -45,7 +45,7 @@ impl Body {
                 &self
                     .rotation
                     .reverse()
-                    .rotate(&(*contact).into())
+                    .rotate(&(*contact - self.pos).into())
                     .wedge_v(&self.rotation.reverse().rotate(&impulse.into())),
             );
 

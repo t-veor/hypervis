@@ -99,7 +99,7 @@ impl Application for TestApp {
                 material: Material { restitution: 0.4 },
                 stationary: false,
                 pos: Vector4::unit_y(),
-                vel: Vector4::new(0.0, 1.0, 0.0, 0.0),
+                vel: Vector4::new(0.0, 0.0, 0.0, 0.0),
                 rotation: alg::Bivec4::new(
                     std::f32::consts::PI / 8.0 - 0.1,
                     0.0,
@@ -109,7 +109,7 @@ impl Application for TestApp {
                     0.0,
                 )
                 .exp(),
-                angular_vel: alg::Bivec4::new(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+                angular_vel: alg::Bivec4::new(1.0, 0.0, 0.0, 0.0, 0.0, 0.0),
                 collider: Collider::Tesseract { half_width: 0.5 },
             },
             mesh_binding: Some(mesh_binding),

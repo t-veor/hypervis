@@ -24,8 +24,8 @@ impl ViewProjection {
             view_proj: opengl_to_wgpu_matrix
                 * cgmath::perspective(Deg(90.0), aspect, 0.1, 1000.0)
                 * Matrix4::look_at(
-                    Point3::new(1.0, 1.0, -2.0),
-                    Point3::new(0.0, 0.0, 0.0),
+                    Point3::new(1.0, 1.0, -2.0) * 2.0,
+                    Point3::new(0.0, 1.0, 0.0),
                     Vector3::unit_y(),
                 ),
         }

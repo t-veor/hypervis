@@ -62,11 +62,9 @@ impl World {
 
         for i in 0..self.objects.len() {
             for j in i + 1..self.objects.len() {
-                if let Some(impulse) =
-                    collide(&self.objects[i].body, &self.objects[j].body)
-                {
-                    collisions.push((i, j, impulse))
-                }
+                collide(&self.objects[i].body, &self.objects[j].body)
+                    .drain(0..)
+                    .for_each(|collision| collisions.push((i, j, collision)))
             }
         }
 
