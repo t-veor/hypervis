@@ -84,7 +84,20 @@ pub fn run<App: Application>(title: &str, size: (u32, u32)) -> Result<()> {
 
     let mut app = App::init(&mut ctx);
 
-    event_loop.run(move |event, _, control_flow| {
+    event_loop.run(move |mut event, _, control_flow| {
+        if let Event::WindowEvent {
+            event:
+                WindowEvent::CursorMoved {
+                    ref mut position, ..
+                },
+            ..
+        } = event
+        {
+            *position = position
+                .to_logical::<f64>(1.0)
+                .to_physical(ctx.imgui_platform.hidpi_factor());
+        }
+
         ctx.imgui_platform.handle_event(
             ctx.imgui.io_mut(),
             &ctx.window,
