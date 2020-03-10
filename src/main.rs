@@ -199,9 +199,11 @@ impl Application for TestApp {
                 material: Material { restitution: 0.4 },
                 stationary: false,
                 pos: Vector4::unit_y(),
-                vel: Vector4::new(0.0, 0.0, 0.0, 0.0),
+                vel: Vector4::new(1.0, 4.0, 5.0, 0.0),
                 rotation: alg::Rotor4::identity(),
-                angular_vel: alg::Bivec4::new(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+                angular_vel: alg::Bivec4::new(
+                    -10.0, 0.0, 10.0, 0.0, 30.0, 20.0,
+                ),
                 collider: Collider::Tesseract { half_width: 0.5 },
             },
             mesh_binding: Some(mesh_binding),
@@ -265,6 +267,8 @@ impl Application for TestApp {
     fn update(&mut self, _ctx: &mut Ctx) {
         let dt = 1f32 / 60f32;
         self.world.update(dt);
+
+        self.slice_plane.base_point.w = self.world.objects[7].body.pos.w;
     }
 
     fn render<'ui>(
@@ -284,6 +288,28 @@ impl Application for TestApp {
         });
 
         Window::new(im_str!("tesseract control")).build(ui, || {
+            if ui.button(im_str!("Bounce"), [0.0, 0.0]) {
+                self.world.objects[7].body.vel.x +=
+                    rand::random::<f32>() * 20.0 - 10.0;
+                self.world.objects[7].body.vel.y +=
+                    rand::random::<f32>() * 10.0 + 5.0;
+                self.world.objects[7].body.vel.z +=
+                    rand::random::<f32>() * 20.0 - 10.0;
+                self.world.objects[7].body.vel.w +=
+                    rand::random::<f32>() * 20.0 - 10.0;
+                self.world.objects[7].body.angular_vel.xy +=
+                    rand::random::<f32>() * 20.0 - 10.0;
+                self.world.objects[7].body.angular_vel.xz +=
+                    rand::random::<f32>() * 20.0 - 10.0;
+                self.world.objects[7].body.angular_vel.xw +=
+                    rand::random::<f32>() * 20.0 - 10.0;
+                self.world.objects[7].body.angular_vel.yz +=
+                    rand::random::<f32>() * 20.0 - 10.0;
+                self.world.objects[7].body.angular_vel.yw +=
+                    rand::random::<f32>() * 20.0 - 10.0;
+                self.world.objects[7].body.angular_vel.zw +=
+                    rand::random::<f32>() * 20.0 - 10.0;
+            }
             ui.text("velocity");
             Slider::new(im_str!("x"), -10.0..=10.0)
                 .build(ui, &mut self.world.objects[7].body.vel.x);

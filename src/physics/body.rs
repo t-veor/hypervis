@@ -46,7 +46,7 @@ impl Body {
     pub fn step(&mut self, dt: f32) {
         if !self.stationary {
             // apply gravity
-            self.vel += Vector4::unit_y() * (-1.0 * dt);
+            self.vel += Vector4::unit_y() * (-9.8 * dt);
 
             self.pos += self.vel * dt;
             self.rotation.update(&(dt * self.angular_vel));
