@@ -197,6 +197,38 @@ pub fn coset_table_bfs(
     paths
 }
 
+pub fn table_bfs_fold<T, F>(
+    table: &Vec<Vec<usize>>,
+    start: usize,
+    initial: T,
+    f: F,
+) -> Vec<T>
+where
+    T: Clone,
+    F: Fn(T, usize) -> T,
+{
+    let mut result = vec![initial.clone(); table.len()];
+    let mut queue = VecDeque::new();
+    let mut seen = HashSet::new();
+
+    queue.push_back(start);
+    seen.insert(start);
+
+    while let Some(top) = queue.pop_front() {
+        for (g, next) in table[top].iter().enumerate() {
+            if seen.contains(&next) {
+                continue;
+            }
+
+            result[*next] = f(result[top].clone(), g);
+            queue.push_back(*next);
+            seen.insert(*next);
+        }
+    }
+
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,7 +1,10 @@
+mod tetrahedra;
 mod todd_coxeter;
 
 use cgmath::{InnerSpace, Vector4, Zero};
 use smallvec::SmallVec;
+
+pub use tetrahedra::*;
 
 #[derive(Debug, Clone)]
 pub struct VertexData {
@@ -28,6 +31,7 @@ pub struct Cell {
     faces: SmallVec<[usize; 16]>,
 }
 
+#[derive(Debug)]
 pub struct Mesh {
     vertices: Vec<Vector4<f32>>,
     vertex_data: Vec<VertexData>,
@@ -66,7 +70,7 @@ fn get_mirror_normals(symbol: &[usize; 3]) -> [Vector4<f32>; 4] {
 }
 
 impl Mesh {
-    pub fn from_schlafli_symbol(symbol: &[usize; 3]) {
+    pub fn from_schlafli_symbol(symbol: &[usize; 3]) -> Self {
         // determine the mirror normals
         let mirror_normals = get_mirror_normals(symbol);
 
@@ -95,27 +99,23 @@ impl Mesh {
 
         let vertex_table =
             todd_coxeter::coset_table(num_gens, relations, &[1, 2, 3]);
-        let vertices: Vec<_> = todd_coxeter::coset_table_bfs(&vertex_table, 0)
-            .iter()
-            .map(|mirrors| {
-                mirrors
-                    .iter()
-                    .fold(v0, |v, i| reflect(v, mirror_normals[*i]))
-            })
-            .collect();
+        let vertices =
+            todd_coxeter::table_bfs_fold(&vertex_table, 0, v0, |v, mirror| {
+                reflect(v, mirror_normals[mirror])
+            });
 
         let edge_table =
             todd_coxeter::coset_table(num_gens, relations, &[0, 2, 3]);
         // the initial edge is guaranteed to be (0, 1)
         let e0 = (0, 1);
-        let edge_tmp: Vec<_> = todd_coxeter::coset_table_bfs(&edge_table, 0)
-            .iter()
-            .map(|mirrors| {
-                mirrors.iter().fold(e0, |(v0, v1), i| {
-                    (vertex_table[v0][*i], vertex_table[v1][*i])
-                })
-            })
-            .collect();
+        let edge_tmp = todd_coxeter::table_bfs_fold(
+            &edge_table,
+            0,
+            e0,
+            |(v0, v1), mirror| {
+                (vertex_table[v0][mirror], vertex_table[v1][mirror])
+            },
+        );
 
         let face_table =
             todd_coxeter::coset_table(num_gens, relations, &[0, 1, 3]);
@@ -132,14 +132,10 @@ impl Mesh {
             }
             edges
         };
-        let face_tmp: Vec<_> = todd_coxeter::coset_table_bfs(&face_table, 0)
-            .iter()
-            .map(|mirrors| {
-                mirrors.iter().fold(f0.clone(), |f, i| {
-                    f.into_iter().map(|e| edge_table[e][*i]).collect()
-                })
-            })
-            .collect();
+        let face_tmp =
+            todd_coxeter::table_bfs_fold(&face_table, 0, f0, |f, mirror| {
+                f.into_iter().map(|e| edge_table[e][mirror]).collect()
+            });
 
         let cell_table =
             todd_coxeter::coset_table(num_gens, relations, &[0, 1, 2]);
@@ -148,6 +144,12 @@ impl Mesh {
         // whole bunch of times, we should recover all the faces in the initial
         // cell
         let c0 = {
+            // also pick a vector to be on planes 0, 1, and 2 - this will be the
+            // normal vector of the cell
+            // it turns out that this is the unit-w vector because of the way we
+            // chose the mirror normals
+            let normal = Vector4::unit_w();
+
             let mut faces: SmallVec<[usize; 16]> = SmallVec::new();
             faces.push(0);
             let mut i = 0;
@@ -161,21 +163,87 @@ impl Mesh {
                 }
                 i += 1;
             }
-            faces
+            Cell { normal, faces }
         };
-        let cell_tmp: Vec<_> = todd_coxeter::coset_table_bfs(&cell_table, 0)
-            .iter()
-            .map(|mirrors| {
-                mirrors.iter().fold(c0.clone(), |c, i| {
-                    c.into_iter().map(|e| face_table[e][*i]).collect()
-                })
+        let cells = todd_coxeter::table_bfs_fold(
+            &cell_table,
+            0,
+            c0,
+            |Cell { normal, faces }, mirror| Cell {
+                normal: reflect(normal, mirror_normals[mirror]),
+                faces: faces
+                    .into_iter()
+                    .map(|f| face_table[f][mirror])
+                    .collect(),
+            },
+        );
+
+        let mut edges: Vec<_> = edge_tmp
+            .into_iter()
+            .map(|(v0, v1)| Edge {
+                hd_vertex: v0,
+                tl_vertex: v1,
+                faces: SmallVec::new(),
             })
             .collect();
-        dbg!(cell_tmp);
 
-        // dbg!(vertices);
-        // dbg!(edge_tmp);
-        // dbg!(face_tmp);
+        let mut faces: Vec<_> = face_tmp
+            .into_iter()
+            .map(|edges| Face {
+                hd_cell: std::usize::MAX,
+                tl_cell: std::usize::MAX,
+                edges,
+            })
+            .collect();
+
+        // populate faces for each edge
+        for (i, face) in faces.iter().enumerate() {
+            for j in face.edges.iter() {
+                edges[*j].faces.push(i);
+            }
+        }
+
+        // populate cells for each face
+        for (i, cell) in cells.iter().enumerate() {
+            for j in cell.faces.iter() {
+                if faces[*j].hd_cell == std::usize::MAX {
+                    faces[*j].hd_cell = i;
+                } else {
+                    faces[*j].tl_cell = i;
+                }
+            }
+        }
+
+        // populate cells for each vertex
+        let mut vertex_data = vec![
+            VertexData {
+                cells: SmallVec::new()
+            };
+            vertices.len()
+        ];
+        for (cell_idx, cell) in cells.iter().enumerate() {
+            for face_idx in cell.faces.iter() {
+                for edge_idx in faces[*face_idx].edges.iter() {
+                    let edge = &edges[*edge_idx];
+                    let v0 = &mut vertex_data[edge.hd_vertex];
+                    if !v0.cells.contains(&cell_idx) {
+                        v0.cells.push(cell_idx);
+                    }
+                    let v1 = &mut vertex_data[edge.tl_vertex];
+                    if !v1.cells.contains(&cell_idx) {
+                        v1.cells.push(cell_idx);
+                    }
+                }
+            }
+        }
+
+        Self {
+            vertices,
+            vertex_data,
+            edges,
+            faces,
+            cells,
+        }
     }
 }
 
@@ -185,6 +253,6 @@ mod test {
 
     #[test]
     fn schlafli() {
-        Mesh::from_schlafli_symbol(&[3, 3, 3]);
+        dbg!(Mesh::from_schlafli_symbol(&[3, 3, 3]));
     }
 }

@@ -186,11 +186,31 @@ impl Application for TestApp {
             mesh_binding: None,
         });
 
-        let mesh = mesh4::tesseract(1.0);
+        let mesh = mesh::Mesh::from_schlafli_symbol(&[4, 3, 3]);
+        let tetrahedralized_mesh =
+            mesh::TetrahedronMesh::from_mesh(&mesh, |normal| {
+                use hsl::HSL;
+                let (r, g, b) = HSL {
+                    h: 180.0
+                        * (normal.z as f64 + rand::random::<f64>() * 5.0 - 2.5)
+                        % 360.0
+                        + 360.0,
+                    s: 0.85,
+                    l: 0.5 + rand::random::<f64>() * 0.1,
+                }
+                .to_rgb();
+                Vector4::new(
+                    r as f32 / 255.0,
+                    g as f32 / 255.0,
+                    b as f32 / 255.0,
+                    1.0,
+                )
+            });
+        // let mesh = mesh4::tesseract(1.0);
         let mesh_binding = slice_pipeline.create_mesh_binding(
             &ctx.graphics_ctx,
-            &mesh.vertices,
-            &mesh.indices,
+            &tetrahedralized_mesh.vertices,
+            &tetrahedralized_mesh.indices,
         );
         world.objects.push(Object {
             body: Body {
