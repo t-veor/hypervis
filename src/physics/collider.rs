@@ -1,10 +1,12 @@
 use super::Body;
+use crate::mesh::Mesh;
+
 use cgmath::{InnerSpace, Vector4};
 
 #[derive(Clone)]
 pub enum Collider {
     HalfSpace { normal: Vector4<f32> },
-    Tesseract { half_width: f32 },
+    Mesh { mesh: Mesh },
 }
 
 pub struct CollisionInstance {
@@ -16,25 +18,13 @@ pub struct CollisionInstance {
 
 pub fn detect_collisions(a: &Body, b: &Body) -> Vec<CollisionInstance> {
     match (&a.collider, &b.collider) {
-        (
-            Collider::HalfSpace { normal },
-            Collider::Tesseract { half_width },
-        ) => {
+        (Collider::HalfSpace { normal }, Collider::Mesh { mesh }) => {
             let plane_distance = a.pos.dot(*normal);
 
-            (0..16)
-                .filter_map(|mut i| {
-                    let mut position = [*half_width; 4];
-                    for j in 0..4 {
-                        if i % 2 == 0 {
-                            position[j] *= -1.0;
-                        }
-                        i /= 2;
-                    }
-                    let pos = b
-                        .rotation
-                        .rotate(&mint::Vector4::from_slice(&position).into());
-                    let pos = Vector4::new(pos.x, pos.y, pos.z, pos.w) + b.pos;
+            mesh.vertices
+                .iter()
+                .filter_map(|position| {
+                    let pos = b.body_to_world(*position);
 
                     let distance = pos.dot(*normal);
 
@@ -51,7 +41,7 @@ pub fn detect_collisions(a: &Body, b: &Body) -> Vec<CollisionInstance> {
                 })
                 .collect()
         }
-        (Collider::Tesseract { .. }, Collider::HalfSpace { .. }) => {
+        (Collider::Mesh { .. }, Collider::HalfSpace { .. }) => {
             // Just call this again with the arguments swapped
             detect_collisions(b, a)
         }

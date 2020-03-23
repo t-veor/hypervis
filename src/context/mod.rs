@@ -1,6 +1,6 @@
 pub mod graphics;
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use winit::{
     dpi::PhysicalSize,
     event::{Event, WindowEvent},

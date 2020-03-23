@@ -170,33 +170,6 @@ pub fn coset_table(
     compressed_table
 }
 
-pub fn coset_table_bfs(
-    table: &Vec<Vec<usize>>,
-    start: usize,
-) -> Vec<Vec<usize>> {
-    let mut paths = vec![Vec::new(); table.len()];
-    let mut queue = VecDeque::new();
-    let mut seen = HashSet::new();
-
-    queue.push_back(start);
-    seen.insert(start);
-
-    while let Some(top) = queue.pop_front() {
-        for (g, next) in table[top].iter().enumerate() {
-            if seen.contains(&next) {
-                continue;
-            }
-
-            paths[*next] = paths[top].clone();
-            paths[*next].push(g);
-            queue.push_back(*next);
-            seen.insert(*next);
-        }
-    }
-
-    paths
-}
-
 pub fn table_bfs_fold<T, F>(
     table: &Vec<Vec<usize>>,
     start: usize,
@@ -252,8 +225,5 @@ mod tests {
             &[0, 1, 3],
         );
         println!("{:?}", table);
-
-        let directions = coset_table_bfs(&table, 0);
-        println!("{:?}", directions);
     }
 }

@@ -1,6 +1,5 @@
 mod alg;
 mod context;
-mod geometry;
 mod mesh;
 mod mesh4;
 mod physics;
@@ -29,7 +28,7 @@ struct TestApp {
     frames: usize,
 }
 
-const ARENA_SIZE: f32 = 2.0;
+const ARENA_SIZE: f32 = 4.0;
 
 impl Application for TestApp {
     fn init(ctx: &mut Ctx) -> Self {
@@ -186,7 +185,7 @@ impl Application for TestApp {
             mesh_binding: None,
         });
 
-        let mesh = mesh::Mesh::from_schlafli_symbol(&[4, 3, 3]);
+        let mesh = mesh::Mesh::from_schlafli_symbol(&[5, 3, 3]);
         let tetrahedralized_mesh =
             mesh::TetrahedronMesh::from_mesh(&mesh, |normal| {
                 use hsl::HSL;
@@ -214,17 +213,15 @@ impl Application for TestApp {
         );
         world.objects.push(Object {
             body: Body {
-                mass: 1.0,
-                moment_inertia_scalar: 1.0 / 6.0,
+                mass: 2.0,
+                moment_inertia_scalar: 2.0 / 6.0,
                 material: Material { restitution: 0.4 },
                 stationary: false,
                 pos: Vector4::unit_y(),
-                vel: Vector4::new(1.0, 4.0, 5.0, 0.0),
+                vel: Vector4::new(0.0, 0.0, 0.0, 0.0),
                 rotation: alg::Rotor4::identity(),
-                angular_vel: alg::Bivec4::new(
-                    -10.0, 0.0, 10.0, 0.0, 30.0, 20.0,
-                ),
-                collider: Collider::Tesseract { half_width: 0.5 },
+                angular_vel: alg::Bivec4::zero(),
+                collider: Collider::Mesh { mesh },
             },
             mesh_binding: Some(mesh_binding),
         });

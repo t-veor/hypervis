@@ -1,4 +1,4 @@
-use super::{Collider, CollisionResponse};
+use super::Collider;
 use crate::alg::{Bivec4, Rotor4, Vec4};
 use cgmath::Vector4;
 
@@ -59,6 +59,11 @@ impl Body {
         }
 
         1.0 / self.moment_inertia_scalar * *body_bivec
+    }
+
+    pub fn body_to_world(&self, v: Vector4<f32>) -> Vector4<f32> {
+        let rotated: Vector4<f32> = self.rotation.rotate(&v.into()).into();
+        rotated + self.pos
     }
 
     pub fn world_to_body(&self, v: Vector4<f32>) -> Vector4<f32> {

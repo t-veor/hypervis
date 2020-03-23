@@ -31,13 +31,13 @@ pub struct Cell {
     faces: SmallVec<[usize; 16]>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Mesh {
-    vertices: Vec<Vector4<f32>>,
-    vertex_data: Vec<VertexData>,
-    edges: Vec<Edge>,
-    faces: Vec<Face>,
-    cells: Vec<Cell>,
+    pub vertices: Vec<Vector4<f32>>,
+    pub vertex_data: Vec<VertexData>,
+    pub edges: Vec<Edge>,
+    pub faces: Vec<Face>,
+    pub cells: Vec<Cell>,
 }
 
 fn reflect(v: Vector4<f32>, mirror_normal: Vector4<f32>) -> Vector4<f32> {
