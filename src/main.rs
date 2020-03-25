@@ -185,7 +185,7 @@ impl Application for TestApp {
             mesh_binding: None,
         });
 
-        let mesh = mesh::Mesh::from_schlafli_symbol(&[5, 3, 3]);
+        let mesh = mesh::Mesh::from_schlafli_symbol(&[4, 3, 3]);
         let tetrahedralized_mesh =
             mesh::TetrahedronMesh::from_mesh(&mesh, |normal| {
                 use hsl::HSL;
@@ -205,7 +205,6 @@ impl Application for TestApp {
                     1.0,
                 )
             });
-        // let mesh = mesh4::tesseract(1.0);
         let mesh_binding = slice_pipeline.create_mesh_binding(
             &ctx.graphics_ctx,
             &tetrahedralized_mesh.vertices,
@@ -217,7 +216,7 @@ impl Application for TestApp {
                 moment_inertia_scalar: 2.0 / 6.0,
                 material: Material { restitution: 0.4 },
                 stationary: false,
-                pos: Vector4::unit_y(),
+                pos: Vector4::new(0.0, 1.5, 0.0, 0.0),
                 vel: Vector4::new(0.0, 0.0, 0.0, 0.0),
                 rotation: alg::Rotor4::identity(),
                 angular_vel: alg::Bivec4::zero(),
@@ -225,6 +224,48 @@ impl Application for TestApp {
             },
             mesh_binding: Some(mesh_binding),
         });
+
+        let mesh = mesh::Mesh::from_schlafli_symbol(&[4, 3, 3]);
+        let tetrahedralized_mesh =
+            mesh::TetrahedronMesh::from_mesh(&mesh, |normal| {
+                use hsl::HSL;
+                let (r, g, b) = HSL {
+                    h: 180.0
+                        * (normal.z as f64 + rand::random::<f64>() * 5.0 - 2.5)
+                        % 360.0
+                        + 360.0,
+                    s: 0.85,
+                    l: 0.5 + rand::random::<f64>() * 0.1,
+                }
+                .to_rgb();
+                Vector4::new(
+                    r as f32 / 255.0,
+                    g as f32 / 255.0,
+                    b as f32 / 255.0,
+                    1.0,
+                )
+            });
+        let mesh_binding = slice_pipeline.create_mesh_binding(
+            &ctx.graphics_ctx,
+            &tetrahedralized_mesh.vertices,
+            &tetrahedralized_mesh.indices,
+        );
+        /*
+        world.objects.push(Object {
+            body: Body {
+                mass: 1.0,
+                moment_inertia_scalar: 1.0 / 6.0,
+                material: Material { restitution: 0.4 },
+                stationary: false,
+                pos: Vector4::new(0.0, 0.5, 0.0, 0.0),
+                vel: Vector4::new(0.0, 0.0, 0.0, 0.0),
+                rotation: alg::Rotor4::identity(),
+                angular_vel: alg::Bivec4::zero(),
+                collider: Collider::Mesh { mesh },
+            },
+            mesh_binding: Some(mesh_binding),
+        });
+        */
 
         let view_proj = ViewProjection::new(
             ctx,

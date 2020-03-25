@@ -15,6 +15,10 @@ impl Quadvec4 {
         Self { xyzw: 0.0 }
     }
 
+    pub fn one() -> Self {
+        Self { xyzw: 1.0 }
+    }
+
     pub fn mul_v(&self, v: &Vec4) -> Trivec4 {
         let q = self;
         Trivec4 {

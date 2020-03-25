@@ -28,18 +28,23 @@ impl Body {
     pub fn resolve_impulse(
         &mut self,
         impulse: Vector4<f32>,
-        projection: Vector4<f32>,
-        body_contact: Vector4<f32>,
+        world_contact: Vector4<f32>,
     ) {
         if !self.stationary {
+            let body_contact = self.world_pos_to_body(world_contact);
             let delta_angular_vel = self.inverse_moment_of_inertia(
                 &Vec4::from(body_contact)
                     .wedge_v(&self.rotation.reverse().rotate(&impulse.into())),
             );
 
             self.vel += impulse / self.mass;
-            self.pos += projection / self.mass;
             self.angular_vel = self.angular_vel + delta_angular_vel;
+        }
+    }
+
+    pub fn apply_projection(&mut self, projection: Vector4<f32>) {
+        if !self.stationary {
+            self.pos += projection;
         }
     }
 
@@ -61,12 +66,20 @@ impl Body {
         1.0 / self.moment_inertia_scalar * *body_bivec
     }
 
-    pub fn body_to_world(&self, v: Vector4<f32>) -> Vector4<f32> {
+    pub fn body_vec_to_world(&self, v: Vector4<f32>) -> Vector4<f32> {
+        self.rotation.rotate(&v.into()).into()
+    }
+
+    pub fn world_vec_to_body(&self, v: Vector4<f32>) -> Vector4<f32> {
+        self.rotation.reverse().rotate(&v.into()).into()
+    }
+
+    pub fn body_pos_to_world(&self, v: Vector4<f32>) -> Vector4<f32> {
         let rotated: Vector4<f32> = self.rotation.rotate(&v.into()).into();
         rotated + self.pos
     }
 
-    pub fn world_to_body(&self, v: Vector4<f32>) -> Vector4<f32> {
+    pub fn world_pos_to_body(&self, v: Vector4<f32>) -> Vector4<f32> {
         self.rotation
             .reverse()
             .rotate(&(v - self.pos).into())

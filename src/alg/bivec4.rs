@@ -31,22 +31,28 @@ impl Bivec4 {
         Self::new(-self.xy, -self.xz, -self.xw, -self.yz, -self.yw, -self.zw)
     }
 
-    pub fn mul_v(&self, v: &Vec4) -> (Vec4, Trivec4) {
+    pub fn dot_v(&self, v: &Vec4) -> Vec4 {
         let b = self;
-        (
-            Vec4 {
-                x: b.xw * v.w + b.xy * v.y + b.xz * v.z,
-                y: -b.xy * v.x + b.yw * v.w + b.yz * v.z,
-                z: -b.xz * v.x - b.yz * v.y + b.zw * v.w,
-                w: -b.xw * v.x - b.yw * v.y - b.zw * v.z,
-            },
-            Trivec4 {
-                xyz: b.xy * v.z - b.xz * v.y + b.yz * v.x,
-                xyw: -b.xw * v.y + b.xy * v.w + b.yw * v.x,
-                xzw: -b.xw * v.z + b.xz * v.w + b.zw * v.x,
-                yzw: -b.yw * v.z + b.yz * v.w + b.zw * v.y,
-            },
-        )
+        Vec4 {
+            x: b.xw * v.w + b.xy * v.y + b.xz * v.z,
+            y: -b.xy * v.x + b.yw * v.w + b.yz * v.z,
+            z: -b.xz * v.x - b.yz * v.y + b.zw * v.w,
+            w: -b.xw * v.x - b.yw * v.y - b.zw * v.z,
+        }
+    }
+
+    pub fn wedge_v(&self, v: &Vec4) -> Trivec4 {
+        let b = self;
+        Trivec4 {
+            xyz: b.xy * v.z - b.xz * v.y + b.yz * v.x,
+            xyw: -b.xw * v.y + b.xy * v.w + b.yw * v.x,
+            xzw: -b.xw * v.z + b.xz * v.w + b.zw * v.x,
+            yzw: -b.yw * v.z + b.yz * v.w + b.zw * v.y,
+        }
+    }
+
+    pub fn mul_v(&self, v: &Vec4) -> (Vec4, Trivec4) {
+        (self.dot_v(v), self.wedge_v(v))
     }
 
     #[rustfmt::skip]

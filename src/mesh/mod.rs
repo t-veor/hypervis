@@ -1,34 +1,36 @@
+mod clip;
 mod tetrahedra;
 mod todd_coxeter;
 
 use cgmath::{InnerSpace, Vector4, Zero};
 use smallvec::SmallVec;
 
+pub use clip::*;
 pub use tetrahedra::*;
 
 #[derive(Debug, Clone)]
 pub struct VertexData {
-    cells: SmallVec<[usize; 16]>,
+    pub cells: SmallVec<[usize; 16]>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Edge {
-    hd_vertex: usize,
-    tl_vertex: usize,
-    faces: SmallVec<[usize; 8]>,
+    pub hd_vertex: usize,
+    pub tl_vertex: usize,
+    pub faces: SmallVec<[usize; 8]>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Face {
-    hd_cell: usize,
-    tl_cell: usize,
-    edges: SmallVec<[usize; 8]>,
+    pub hd_cell: usize,
+    pub tl_cell: usize,
+    pub edges: SmallVec<[usize; 8]>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Cell {
-    normal: Vector4<f32>,
-    faces: SmallVec<[usize; 16]>,
+    pub normal: Vector4<f32>,
+    pub faces: SmallVec<[usize; 16]>,
 }
 
 #[derive(Debug, Clone)]
@@ -146,9 +148,9 @@ impl Mesh {
         let c0 = {
             // also pick a vector to be on planes 0, 1, and 2 - this will be the
             // normal vector of the cell
-            // it turns out that this is the unit-w vector because of the way we
+            // it turns out that this is the -unit-w vector because of the way we
             // chose the mirror normals
-            let normal = Vector4::unit_w();
+            let normal = -Vector4::unit_w();
 
             let mut faces: SmallVec<[usize; 16]> = SmallVec::new();
             faces.push(0);

@@ -7,7 +7,9 @@ use crate::context::{
     },
     GraphicsContext,
 };
-use crate::physics::{calc_impulse, detect_collisions, Body};
+use crate::physics::{
+    calc_impulse, detect_collisions, Body, CollisionResponse,
+};
 
 pub struct Object {
     pub body: Body,
@@ -64,46 +66,44 @@ impl World {
         let mut mass_adjustments = HashMap::new();
         for i in 0..self.objects.len() {
             for j in i + 1..self.objects.len() {
-                let mut new_collisions = detect_collisions(
+                if let Some(manifold) = detect_collisions(
                     &self.objects[i].body,
                     &self.objects[j].body,
-                );
-                *mass_adjustments.entry(i).or_insert(0) += new_collisions.len();
-                *mass_adjustments.entry(j).or_insert(0) += new_collisions.len();
-                collisions.extend(new_collisions.drain(0..).map(|x| (i, j, x)));
+                ) {
+                    *mass_adjustments.entry(i).or_insert(0) += 1;
+                    *mass_adjustments.entry(j).or_insert(0) += 1;
+                    collisions.push((i, j, manifold));
+                }
             }
         }
 
         let mut impulses = Vec::new();
+        let mut projections = Vec::new();
         for (i, j, collision) in collisions {
-            if let Some(response) = calc_impulse(
-                &collision,
+            let CollisionResponse {
+                impulses: collision_impulses,
+                projection,
+            } = calc_impulse(
+                collision,
                 &self.objects[i].body,
                 mass_adjustments[&i] as f32,
                 &self.objects[j].body,
                 mass_adjustments[&j] as f32,
-            ) {
-                impulses.push((
-                    i,
-                    -response.impulse,
-                    -response.projection,
-                    collision.body_contact_a,
-                ));
-                impulses.push((
-                    j,
-                    response.impulse,
-                    response.projection,
-                    collision.body_contact_b,
-                ));
+            );
+            for im in collision_impulses {
+                impulses.push((i, -im.impulse, im.position));
+                impulses.push((j, im.impulse, im.position));
             }
+            projections.push((i, -projection));
+            projections.push((j, projection));
         }
 
-        for (i, impulse, projection, body_contact) in impulses {
-            self.objects[i].body.resolve_impulse(
-                impulse,
-                projection,
-                body_contact,
-            );
+        for (i, impulse, world_contact) in impulses {
+            self.objects[i].body.resolve_impulse(impulse, world_contact);
+        }
+
+        for (i, projection) in projections {
+            self.objects[i].body.apply_projection(projection);
         }
 
         for object in self.objects.iter_mut() {
