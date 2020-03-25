@@ -210,10 +210,11 @@ impl Application for TestApp {
             &tetrahedralized_mesh.vertices,
             &tetrahedralized_mesh.indices,
         );
+        /*
         world.objects.push(Object {
             body: Body {
-                mass: 2.0,
-                moment_inertia_scalar: 2.0 / 6.0,
+                mass: 1.0,
+                moment_inertia_scalar: 1.0 / 6.0,
                 material: Material { restitution: 0.4 },
                 stationary: false,
                 pos: Vector4::new(0.0, 1.5, 0.0, 0.0),
@@ -224,6 +225,7 @@ impl Application for TestApp {
             },
             mesh_binding: Some(mesh_binding),
         });
+        */
 
         let mesh = mesh::Mesh::from_schlafli_symbol(&[4, 3, 3]);
         let tetrahedralized_mesh =
@@ -250,7 +252,6 @@ impl Application for TestApp {
             &tetrahedralized_mesh.vertices,
             &tetrahedralized_mesh.indices,
         );
-        /*
         world.objects.push(Object {
             body: Body {
                 mass: 1.0,
@@ -265,7 +266,6 @@ impl Application for TestApp {
             },
             mesh_binding: Some(mesh_binding),
         });
-        */
 
         let view_proj = ViewProjection::new(
             ctx,

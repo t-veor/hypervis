@@ -80,14 +80,16 @@ impl World {
         let mut impulses = Vec::new();
         let mut projections = Vec::new();
         for (i, j, collision) in collisions {
+            assert!(i < j);
+            let (head, tail) = self.objects.split_at_mut(j);
             let CollisionResponse {
                 impulses: collision_impulses,
                 projection,
             } = calc_impulse(
                 collision,
-                &self.objects[i].body,
+                &mut head[i].body,
                 mass_adjustments[&i] as f32,
-                &self.objects[j].body,
+                &mut tail[0].body,
                 mass_adjustments[&j] as f32,
             );
             for im in collision_impulses {

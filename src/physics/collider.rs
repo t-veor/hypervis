@@ -14,7 +14,7 @@ pub enum Collider {
 pub struct CollisionManifold {
     pub normal: Vector4<f32>,
     pub depth: f32,
-    pub contacts: SmallVec<[Vector4<f32>; 8]>,
+    pub contacts: Vec<Vector4<f32>>,
 }
 
 pub fn detect_collisions(a: &Body, b: &Body) -> Option<CollisionManifold> {
@@ -23,7 +23,7 @@ pub fn detect_collisions(a: &Body, b: &Body) -> Option<CollisionManifold> {
             let plane_distance = a.pos.dot(*normal);
             let mut max_depth = 0.0;
 
-            let contacts: SmallVec<[Vector4<f32>; 8]> = mesh
+            let contacts: Vec<_> = mesh
                 .vertices
                 .iter()
                 .filter_map(|position| {
@@ -103,7 +103,7 @@ fn mesh_sat(
     mesh_b: &Mesh,
 ) -> Option<ContactData> {
     let mut contact = None;
-    let mut min_penetration = 0.0;
+    let mut min_penetration = std::f32::INFINITY;
 
     // Check for vertex-cell intersections
     let mut check_vertex_cell =
@@ -130,7 +130,7 @@ fn mesh_sat(
 
                 if min_dist_b < dist_a {
                     // Intersection along this axis
-                    if dist_a - min_dist_b > min_penetration {
+                    if dist_a - min_dist_b < min_penetration {
                         contact =
                             Some(ContactData::VertexCell(VertexCellContact {
                                 side,
