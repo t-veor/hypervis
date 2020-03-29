@@ -79,18 +79,7 @@ impl World {
         }
 
         let mut constraints = Vec::new();
-        let mut projections = Vec::new();
         for (i, j, manifold) in collisions {
-            // Do some linear projection to stop bodies from just sinking into
-            // each other
-            let slop_limit = 0.01f32;
-            let slop_amount = 0.8f32;
-            let projection = (manifold.depth - slop_limit).max(0.0)
-                * slop_amount
-                * manifold.normal;
-
-            projections.push((i, -projection));
-            projections.push((j, projection));
             constraints.push((
                 i,
                 j,
@@ -112,10 +101,6 @@ impl World {
                 let (head, tail) = self.objects.split_at_mut(*j);
                 constraint.solve(&mut head[*i].body, &mut tail[0].body);
             }
-        }
-
-        for (i, projection) in projections {
-            self.objects[i].body.apply_projection(projection);
         }
 
         for object in self.objects.iter_mut() {

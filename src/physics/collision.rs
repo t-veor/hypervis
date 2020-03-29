@@ -40,17 +40,20 @@ impl CollisionConstraint {
 
         let tangents = compute_basis(normal);
 
-        let mut contacts: Vec<_> = contacts
+        let contacts: Vec<_> = contacts
             .into_iter()
             .map(|contact| {
                 let rel_vel = b.vel_at(contact) - a.vel_at(contact);
                 let rel_vel_normal = rel_vel.dot(normal);
 
-                let bias = if rel_vel_normal < -1.0 {
-                    -e * rel_vel_normal
-                } else {
-                    0.0
-                };
+                let slop = 0.01;
+                let baumgarte = 0.2;
+                let bias = -baumgarte * 60.0 * (slop - depth).min(0.0)
+                    + if rel_vel_normal < -1.0 {
+                        -e * rel_vel_normal
+                    } else {
+                        0.0
+                    };
 
                 let inv_a_mass = if a.mass > 0.0 {
                     mass_adjustment_a / a.mass
