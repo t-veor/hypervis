@@ -60,7 +60,6 @@ pub fn detect_collisions(a: &Body, b: &Body) -> Option<CollisionManifold> {
         (Collider::Mesh { mesh: mesh_a }, Collider::Mesh { mesh: mesh_b }) => {
             if let Some(contact) = mesh_sat(a, mesh_a, b, mesh_b) {
                 if let ContactData::VertexCell(contact) = contact {
-                    dbg!(&contact);
                     return Some(resolve_vertex_cell_contact(
                         a, mesh_a, b, mesh_b, contact,
                     ));
@@ -252,29 +251,33 @@ fn resolve_vertex_cell_contact(
     mesh_b: &Mesh,
     contact: VertexCellContact,
 ) -> CollisionManifold {
-    if contact.side {
+    if !contact.side {
         // just swap the meshes around in the call
-        return resolve_vertex_cell_contact(
+        let mut result = resolve_vertex_cell_contact(
             b,
             mesh_b,
             a,
             mesh_a,
             VertexCellContact {
-                side: false,
+                side: true,
                 ..contact
             },
         );
+        // flip the normal as the collision resolution code expects the normal
+        // to be oriented in a certain way
+        result.normal *= -1.0;
+        return result;
     }
 
-    let reference_cell = &mesh_b.cells[contact.cell_idx];
+    let reference_cell = &mesh_a.cells[contact.cell_idx];
 
     // Need to determine incident cell - find the cell with the least dot
     // product with the reference normal
     let mut min_dot_product = 1.0;
     let mut incident_cell_idx = 0;
-    for cell_idx in mesh_a.vertex_data[contact.vertex_idx].cells.iter() {
-        let candidate_cell = &mesh_a.cells[*cell_idx];
-        let dot_product = a
+    for cell_idx in mesh_b.vertex_data[contact.vertex_idx].cells.iter() {
+        let candidate_cell = &mesh_b.cells[*cell_idx];
+        let dot_product = b
             .body_vec_to_world(candidate_cell.normal)
             .dot(contact.normal);
         if dot_product < min_dot_product {
@@ -284,12 +287,12 @@ fn resolve_vertex_cell_contact(
     }
 
     // clip the incident cell against the adjacent cells of the reference cell
-    let mut clipper = ClipMesh::from_cell(mesh_a, incident_cell_idx);
+    let mut clipper = ClipMesh::from_cell(mesh_b, incident_cell_idx);
     let mut v0 = Vector4::zero();
     for face_idx in reference_cell.faces.iter() {
-        let face = &mesh_b.faces[*face_idx];
+        let face = &mesh_a.faces[*face_idx];
         // grab a representative vertex
-        v0 = mesh_b.vertices[mesh_b.edges[face.edges[0]].hd_vertex];
+        v0 = mesh_a.vertices[mesh_a.edges[face.edges[0]].hd_vertex];
 
         let cell_idx = if face.hd_cell == contact.cell_idx {
             face.tl_cell
@@ -297,10 +300,10 @@ fn resolve_vertex_cell_contact(
             face.hd_cell
         };
         let clip_normal = a.world_vec_to_body(
-            b.body_vec_to_world(-mesh_b.cells[cell_idx].normal),
+            a.body_vec_to_world(-mesh_a.cells[cell_idx].normal),
         );
         let clip_distance =
-            clip_normal.dot(a.world_pos_to_body(b.body_pos_to_world(v0)));
+            clip_normal.dot(b.world_pos_to_body(a.body_pos_to_world(v0)));
 
         clipper.clip_by(clip_normal, clip_distance);
     }
@@ -311,11 +314,11 @@ fn resolve_vertex_cell_contact(
     let contacts = clipper
         .to_vertices()
         .into_iter()
-        .filter_map(|a_vec| {
-            let world_vec = a.body_pos_to_world(a_vec);
-            let b_vec = b.world_pos_to_body(world_vec);
+        .filter_map(|b_vec| {
+            let world_vec = b.body_pos_to_world(b_vec);
+            let a_vec = a.world_pos_to_body(world_vec);
 
-            let dist = b_vec.dot(reference_cell.normal);
+            let dist = a_vec.dot(reference_cell.normal);
             if dist < reference_dist {
                 max_depth = max_depth.max(reference_dist - dist);
                 Some(world_vec)
@@ -326,7 +329,7 @@ fn resolve_vertex_cell_contact(
         .collect();
 
     CollisionManifold {
-        normal: b.rotation.rotate(&(reference_cell.normal).into()).into(),
+        normal: a.body_vec_to_world(reference_cell.normal),
         depth: max_depth,
         contacts,
     }

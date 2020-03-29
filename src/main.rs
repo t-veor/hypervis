@@ -26,6 +26,8 @@ struct TestApp {
     view_proj: ViewProjection,
     world: World,
     frames: usize,
+    step_requested: bool,
+    steps: usize,
 }
 
 const ARENA_SIZE: f32 = 4.0;
@@ -203,7 +205,6 @@ impl Application for TestApp {
             &tetrahedralized_mesh.vertices,
             &tetrahedralized_mesh.indices,
         );
-        /*
         world.objects.push(Object {
             body: Body {
                 mass: 1.0,
@@ -211,14 +212,12 @@ impl Application for TestApp {
                 material: Material { restitution: 0.4 },
                 stationary: false,
                 pos: Vector4::new(0.0, 1.5, 0.0, 0.0),
-                vel: Vector4::new(0.0, 0.0, 0.0, 0.0),
                 rotation: alg::Rotor4::identity(),
-                angular_vel: alg::Bivec4::zero(),
+                vel: Velocity::zero(),
                 collider: Collider::Mesh { mesh },
             },
             mesh_binding: Some(mesh_binding),
         });
-        */
 
         let mesh = mesh::Mesh::from_schlafli_symbol(&[4, 3, 3]);
         let tetrahedralized_mesh =
@@ -253,10 +252,7 @@ impl Application for TestApp {
                 stationary: false,
                 pos: Vector4::new(0.0, 0.5, 0.0, 0.0),
                 rotation: alg::Rotor4::identity(),
-                vel: Velocity {
-                    linear: Vector4::unit_x(),
-                    angular: alg::Bivec4::zero(),
-                },
+                vel: Velocity::zero(),
                 collider: Collider::Mesh { mesh },
             },
             mesh_binding: Some(mesh_binding),
@@ -265,7 +261,7 @@ impl Application for TestApp {
         let view_proj = ViewProjection::new(
             ctx,
             90.0,
-            Point3::new(2.0, 2.0, -4.0),
+            Point3::new(1.0, 5.0, -5.0),
             Point3::new(0.0, 1.0, 0.0),
         );
 
@@ -288,6 +284,8 @@ impl Application for TestApp {
             view_proj,
             world,
             frames: 0,
+            step_requested: false,
+            steps: 0,
         }
     }
 
@@ -296,7 +294,7 @@ impl Application for TestApp {
         self.view_proj = ViewProjection::new(
             ctx,
             90.0,
-            Point3::new(2.0, 2.0, -4.0),
+            Point3::new(1.0, 5.0, -5.0),
             Point3::new(0.0, 1.0, 0.0),
         );
 
@@ -319,7 +317,11 @@ impl Application for TestApp {
 
     fn update(&mut self, _ctx: &mut Ctx) {
         let dt = 1f32 / 60f32;
-        self.world.update(dt);
+        if true {
+            self.world.update(dt);
+            self.step_requested = false;
+            self.steps += 1;
+        }
 
         self.slice_plane.base_point.w = self.world.objects[7].body.pos.w;
     }
@@ -341,6 +343,9 @@ impl Application for TestApp {
         });
 
         Window::new(im_str!("tesseract control")).build(ui, || {
+            if ui.button(im_str!("Step"), [0.0, 0.0]) {
+                self.step_requested = true;
+            }
             let vel = &mut self.world.objects[7].body.vel;
             if ui.button(im_str!("Bounce"), [0.0, 0.0]) {
                 vel.linear.x += rand::random::<f32>() * 20.0 - 10.0;

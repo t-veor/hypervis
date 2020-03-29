@@ -66,10 +66,13 @@ impl World {
         let mut mass_adjustments = HashMap::new();
         for i in 0..self.objects.len() {
             for j in i + 1..self.objects.len() {
-                if let Some(manifold) = detect_collisions(
+                if let Some(mut manifold) = detect_collisions(
                     &self.objects[i].body,
                     &self.objects[j].body,
                 ) {
+                    if manifold.contacts.len() == 0 {
+                        continue;
+                    }
                     *mass_adjustments.entry(i).or_insert(0) += 1;
                     *mass_adjustments.entry(j).or_insert(0) += 1;
                     collisions.push((i, j, manifold));

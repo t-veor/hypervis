@@ -3,6 +3,8 @@ use crate::alg::Vec4;
 use cgmath::{Array, InnerSpace, Vector3, Vector4, Zero};
 use rand::seq::SliceRandom;
 
+pub const SOLVE_ITERS: usize = 20;
+
 pub struct Impulse {
     pub impulse: Vector4<f32>,
     pub position: Vector4<f32>,
@@ -13,6 +15,7 @@ pub struct CollisionResponse {
     pub projection: Vector4<f32>,
 }
 
+#[derive(Debug)]
 struct ContactState {
     contact: Vector4<f32>,
     bias: f32,
@@ -138,7 +141,7 @@ pub fn calc_impulse(
         })
         .collect();
 
-    for _ in 0..4 {
+    for _ in 0..SOLVE_ITERS {
         for contact_state in contacts.iter_mut() {
             let ContactState {
                 contact,
