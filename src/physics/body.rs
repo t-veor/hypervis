@@ -1,10 +1,25 @@
 use super::Collider;
 use crate::alg::{Bivec4, Rotor4, Vec4};
-use cgmath::Vector4;
+use cgmath::{Vector4, Zero};
 
 #[derive(Debug, Clone)]
 pub struct Material {
     pub restitution: f32,
+}
+
+#[derive(Debug, Clone)]
+pub struct Velocity {
+    pub linear: Vector4<f32>,
+    pub angular: Bivec4,
+}
+
+impl Velocity {
+    pub fn zero() -> Self {
+        Self {
+            linear: Vector4::zero(),
+            angular: Bivec4::zero(),
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -17,9 +32,9 @@ pub struct Body {
     pub stationary: bool,
 
     pub pos: Vector4<f32>,
-    pub vel: Vector4<f32>,
     pub rotation: Rotor4,
-    pub angular_vel: Bivec4,
+
+    pub vel: Velocity,
 
     pub collider: Collider,
 }
@@ -37,8 +52,8 @@ impl Body {
                     .wedge_v(&self.rotation.reverse().rotate(&impulse.into())),
             );
 
-            self.vel += impulse / self.mass;
-            self.angular_vel = self.angular_vel + delta_angular_vel;
+            self.vel.linear += impulse / self.mass;
+            self.vel.angular = self.vel.angular + delta_angular_vel;
         }
     }
 
@@ -51,10 +66,10 @@ impl Body {
     pub fn step(&mut self, dt: f32) {
         if !self.stationary {
             // apply gravity
-            self.vel += Vector4::unit_y() * (-9.8 * dt);
+            self.vel.linear += Vector4::unit_y() * (-9.8 * dt);
 
-            self.pos += self.vel * dt;
-            self.rotation.update(&(dt * self.angular_vel));
+            self.pos += self.vel.linear * dt;
+            self.rotation.update(&(dt * self.vel.angular));
         }
     }
 
@@ -64,6 +79,18 @@ impl Body {
         }
 
         1.0 / self.moment_inertia_scalar * *body_bivec
+    }
+
+    pub fn vel_at(&self, world_pos: Vector4<f32>) -> Vector4<f32> {
+        let body_pos = self.world_pos_to_body(world_pos);
+
+        let rot_vel = self.body_vec_to_world(
+            Vec4::from(body_pos)
+                .left_contract_bv(&self.vel.angular)
+                .into(),
+        );
+
+        self.vel.linear + rot_vel
     }
 
     pub fn body_vec_to_world(&self, v: Vector4<f32>) -> Vector4<f32> {

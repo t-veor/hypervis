@@ -14,7 +14,7 @@ use context::graphics::{
     DEPTH_FORMAT,
 };
 use context::{Application, Ctx, GraphicsContext};
-use physics::{Body, Collider, Material};
+use physics::{Body, Collider, Material, Velocity};
 use world::{Object, World};
 
 struct TestApp {
@@ -77,9 +77,8 @@ impl Application for TestApp {
                 material: Material { restitution: 0.4 },
                 stationary: true,
                 pos: Vector4::zero(),
-                vel: Vector4::zero(),
                 rotation: alg::Rotor4::identity(),
-                angular_vel: alg::Bivec4::zero(),
+                vel: Velocity::zero(),
                 collider: Collider::HalfSpace {
                     normal: Vector4::unit_y(),
                 },
@@ -95,9 +94,8 @@ impl Application for TestApp {
                 material: Material { restitution: 0.4 },
                 stationary: true,
                 pos: -ARENA_SIZE * Vector4::unit_x(),
-                vel: Vector4::zero(),
                 rotation: alg::Rotor4::identity(),
-                angular_vel: alg::Bivec4::zero(),
+                vel: Velocity::zero(),
                 collider: Collider::HalfSpace {
                     normal: Vector4::unit_x(),
                 },
@@ -111,9 +109,8 @@ impl Application for TestApp {
                 material: Material { restitution: 0.4 },
                 stationary: true,
                 pos: ARENA_SIZE * Vector4::unit_x(),
-                vel: Vector4::zero(),
                 rotation: alg::Rotor4::identity(),
-                angular_vel: alg::Bivec4::zero(),
+                vel: Velocity::zero(),
                 collider: Collider::HalfSpace {
                     normal: -Vector4::unit_x(),
                 },
@@ -127,9 +124,8 @@ impl Application for TestApp {
                 material: Material { restitution: 0.4 },
                 stationary: true,
                 pos: -ARENA_SIZE * Vector4::unit_z(),
-                vel: Vector4::zero(),
                 rotation: alg::Rotor4::identity(),
-                angular_vel: alg::Bivec4::zero(),
+                vel: Velocity::zero(),
                 collider: Collider::HalfSpace {
                     normal: Vector4::unit_z(),
                 },
@@ -143,9 +139,8 @@ impl Application for TestApp {
                 material: Material { restitution: 0.4 },
                 stationary: true,
                 pos: ARENA_SIZE * Vector4::unit_z(),
-                vel: Vector4::zero(),
                 rotation: alg::Rotor4::identity(),
-                angular_vel: alg::Bivec4::zero(),
+                vel: Velocity::zero(),
                 collider: Collider::HalfSpace {
                     normal: -Vector4::unit_z(),
                 },
@@ -159,9 +154,8 @@ impl Application for TestApp {
                 material: Material { restitution: 0.4 },
                 stationary: true,
                 pos: -ARENA_SIZE * Vector4::unit_w(),
-                vel: Vector4::zero(),
                 rotation: alg::Rotor4::identity(),
-                angular_vel: alg::Bivec4::zero(),
+                vel: Velocity::zero(),
                 collider: Collider::HalfSpace {
                     normal: Vector4::unit_w(),
                 },
@@ -175,9 +169,8 @@ impl Application for TestApp {
                 material: Material { restitution: 0.4 },
                 stationary: true,
                 pos: ARENA_SIZE * Vector4::unit_w(),
-                vel: Vector4::zero(),
                 rotation: alg::Rotor4::identity(),
-                angular_vel: alg::Bivec4::zero(),
+                vel: Velocity::zero(),
                 collider: Collider::HalfSpace {
                     normal: -Vector4::unit_w(),
                 },
@@ -256,12 +249,14 @@ impl Application for TestApp {
             body: Body {
                 mass: 1.0,
                 moment_inertia_scalar: 1.0 / 6.0,
-                material: Material { restitution: 0.4 },
+                material: Material { restitution: 0.2 },
                 stationary: false,
                 pos: Vector4::new(0.0, 0.5, 0.0, 0.0),
-                vel: Vector4::new(0.0, 0.0, 0.0, 0.0),
                 rotation: alg::Rotor4::identity(),
-                angular_vel: alg::Bivec4::zero(),
+                vel: Velocity {
+                    linear: Vector4::unit_x(),
+                    angular: alg::Bivec4::zero(),
+                },
                 collider: Collider::Mesh { mesh },
             },
             mesh_binding: Some(mesh_binding),
@@ -346,50 +341,41 @@ impl Application for TestApp {
         });
 
         Window::new(im_str!("tesseract control")).build(ui, || {
+            let vel = &mut self.world.objects[7].body.vel;
             if ui.button(im_str!("Bounce"), [0.0, 0.0]) {
-                self.world.objects[7].body.vel.x +=
-                    rand::random::<f32>() * 20.0 - 10.0;
-                self.world.objects[7].body.vel.y +=
-                    rand::random::<f32>() * 10.0 + 5.0;
-                self.world.objects[7].body.vel.z +=
-                    rand::random::<f32>() * 20.0 - 10.0;
-                self.world.objects[7].body.vel.w +=
-                    rand::random::<f32>() * 20.0 - 10.0;
-                self.world.objects[7].body.angular_vel.xy +=
-                    rand::random::<f32>() * 20.0 - 10.0;
-                self.world.objects[7].body.angular_vel.xz +=
-                    rand::random::<f32>() * 20.0 - 10.0;
-                self.world.objects[7].body.angular_vel.xw +=
-                    rand::random::<f32>() * 20.0 - 10.0;
-                self.world.objects[7].body.angular_vel.yz +=
-                    rand::random::<f32>() * 20.0 - 10.0;
-                self.world.objects[7].body.angular_vel.yw +=
-                    rand::random::<f32>() * 20.0 - 10.0;
-                self.world.objects[7].body.angular_vel.zw +=
-                    rand::random::<f32>() * 20.0 - 10.0;
+                vel.linear.x += rand::random::<f32>() * 20.0 - 10.0;
+                vel.linear.y += rand::random::<f32>() * 10.0 + 5.0;
+                vel.linear.z += rand::random::<f32>() * 20.0 - 10.0;
+                vel.linear.w += rand::random::<f32>() * 20.0 - 10.0;
+                vel.angular.xy += rand::random::<f32>() * 20.0 - 10.0;
+                vel.angular.xz += rand::random::<f32>() * 20.0 - 10.0;
+                vel.angular.xw += rand::random::<f32>() * 20.0 - 10.0;
+                vel.angular.yz += rand::random::<f32>() * 20.0 - 10.0;
+                vel.angular.yw += rand::random::<f32>() * 20.0 - 10.0;
+                vel.angular.zw += rand::random::<f32>() * 20.0 - 10.0;
             }
             ui.text("velocity");
             Slider::new(im_str!("x"), -10.0..=10.0)
-                .build(ui, &mut self.world.objects[7].body.vel.x);
+                .build(ui, &mut vel.linear.x);
             Slider::new(im_str!("y"), -10.0..=10.0)
-                .build(ui, &mut self.world.objects[7].body.vel.y);
+                .build(ui, &mut vel.linear.y);
             Slider::new(im_str!("z"), -10.0..=10.0)
-                .build(ui, &mut self.world.objects[7].body.vel.z);
+                .build(ui, &mut vel.linear.z);
             Slider::new(im_str!("w"), -10.0..=10.0)
-                .build(ui, &mut self.world.objects[7].body.vel.w);
+                .build(ui, &mut vel.linear.w);
             ui.text("angular velocity");
             Slider::new(im_str!("xy"), -10.0..=10.0)
-                .build(ui, &mut self.world.objects[7].body.angular_vel.xy);
+                .build(ui, &mut vel.angular.xy);
             Slider::new(im_str!("xz"), -10.0..=10.0)
-                .build(ui, &mut self.world.objects[7].body.angular_vel.xz);
+                .build(ui, &mut vel.angular.xz);
             Slider::new(im_str!("xw"), -10.0..=10.0)
-                .build(ui, &mut self.world.objects[7].body.angular_vel.xw);
+                .build(ui, &mut vel.angular.xw);
             Slider::new(im_str!("yz"), -10.0..=10.0)
-                .build(ui, &mut self.world.objects[7].body.angular_vel.yz);
+                .build(ui, &mut vel.angular.yz);
             Slider::new(im_str!("yw"), -10.0..=10.0)
-                .build(ui, &mut self.world.objects[7].body.angular_vel.yw);
+                .build(ui, &mut vel.angular.yw);
             Slider::new(im_str!("zw"), -10.0..=10.0)
-                .build(ui, &mut self.world.objects[7].body.angular_vel.zw);
+                .build(ui, &mut vel.angular.zw);
         });
 
         let mut encoder = graphics_ctx.device.create_command_encoder(
