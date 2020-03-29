@@ -1,7 +1,9 @@
 use super::Body;
 use crate::mesh::{ClipMesh, Mesh};
 
-use cgmath::{Array, InnerSpace, Vector4, Zero};
+use cgmath::{
+    Array, InnerSpace, Matrix3, SquareMatrix, Vector3, Vector4, Zero,
+};
 use smallvec::SmallVec;
 
 #[derive(Clone)]
@@ -59,11 +61,17 @@ pub fn detect_collisions(a: &Body, b: &Body) -> Option<CollisionManifold> {
         }
         (Collider::Mesh { mesh: mesh_a }, Collider::Mesh { mesh: mesh_b }) => {
             if let Some(contact) = mesh_sat(a, mesh_a, b, mesh_b) {
-                if let ContactData::VertexCell(contact) = contact {
-                    return Some(resolve_vertex_cell_contact(
-                        a, mesh_a, b, mesh_b, contact,
-                    ));
-                }
+                // dbg!(&contact);
+                return Some(match contact {
+                    ContactData::VertexCell(contact) => {
+                        resolve_vertex_cell_contact(
+                            a, mesh_a, b, mesh_b, contact,
+                        )
+                    }
+                    ContactData::EdgeFace(contact) => {
+                        resolve_edge_face_contact(a, mesh_a, b, mesh_b, contact)
+                    }
+                });
             }
             None
         }
@@ -84,8 +92,11 @@ struct VertexCellContact {
 struct EdgeFaceContact {
     // if true indicates that the edge is on body b but the face is on body a
     side: bool,
-    edge_idx: usize,
-    face_idx: usize,
+    k: Vector4<f32>,
+    t: Vector4<f32>,
+    s: Vector4<f32>,
+    u: Vector4<f32>,
+    v: Vector4<f32>,
     normal: Vector4<f32>,
 }
 
@@ -103,6 +114,92 @@ fn mesh_sat(
 ) -> Option<ContactData> {
     let mut contact = None;
     let mut min_penetration = std::f32::INFINITY;
+
+    // Check for edge-face intersections
+    let mut check_edge_faces =
+        |a: &Body, mesh_a: &Mesh, b: &Body, mesh_b: &Mesh, side: bool| {
+            for edge in mesh_a.edges.iter() {
+                // grab a representative vertex on the edge
+                let v0 = mesh_a.vertices[edge.hd_vertex];
+                // grab the edge vector
+                let u = mesh_a.vertices[edge.tl_vertex] - v0;
+
+                // loop through all the faces on b
+                for face in mesh_b.faces.iter() {
+                    // grab two edges on the face. Because of the way the face
+                    // was generated, these edges are guaranteed to be
+                    // non-parallel.
+                    let (e0, e1) = (
+                        &mesh_b.edges[face.edges[0]],
+                        &mesh_b.edges[face.edges[1]],
+                    );
+                    // grab edge vectors
+                    let v = a.world_vec_to_body(b.body_vec_to_world(
+                        mesh_b.vertices[e0.tl_vertex]
+                            - mesh_b.vertices[e0.hd_vertex],
+                    ));
+                    let w = a.world_vec_to_body(b.body_vec_to_world(
+                        mesh_b.vertices[e1.tl_vertex]
+                            - mesh_b.vertices[e1.hd_vertex],
+                    ));
+
+                    // grab the normal vector adjacent to all
+                    let mut n =
+                        crate::alg::triple_cross_product(u, v, w).normalize();
+                    if !n.is_finite() {
+                        continue;
+                    }
+                    let mut dist_a = n.dot(v0);
+                    // ensure it's positive
+                    if dist_a < 0.0 {
+                        n = -n;
+                        dist_a = -dist_a;
+                    }
+                    let mut min_dist_b = dist_a;
+
+                    // loop through all the vertices on b
+                    for v in mesh_b.vertices.iter() {
+                        let dist_b =
+                            a.world_pos_to_body(b.body_pos_to_world(*v)).dot(n);
+                        if dist_b < min_dist_b {
+                            min_dist_b = dist_b;
+                        }
+                    }
+
+                    if min_dist_b < dist_a {
+                        // Intersection along this axis
+                        if dist_a - min_dist_b > min_penetration {
+                            contact =
+                                Some(ContactData::EdgeFace(EdgeFaceContact {
+                                    side,
+                                    k: a.body_pos_to_world(v0),
+                                    t: a.body_vec_to_world(u),
+                                    s: b.body_pos_to_world(
+                                        mesh_b.vertices[e0.hd_vertex],
+                                    ),
+                                    u: a.body_vec_to_world(v),
+                                    v: a.body_vec_to_world(w),
+                                    normal: a.body_vec_to_world(n),
+                                }));
+                            min_penetration = dist_a - min_dist_b;
+                        }
+                    } else {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        };
+
+    /*
+    if check_edge_faces(a, mesh_a, b, mesh_b, false) {
+        return None;
+    }
+
+    if check_edge_faces(b, mesh_b, a, mesh_a, true) {
+        return None;
+    }
+    */
 
     // Check for vertex-cell intersections
     let mut check_vertex_cell =
@@ -156,90 +253,6 @@ fn mesh_sat(
     if check_vertex_cell(b, mesh_b, a, mesh_a, false) {
         return None;
     }
-
-    /*
-    // Check for edge-face intersections
-    let mut check_edge_faces =
-        |a: &Body, mesh_a: &Mesh, b: &Body, mesh_b: &Mesh, side: bool| {
-            for (edge_idx, edge) in mesh_a.edges.iter().enumerate() {
-                // grab a representative vertex on the edge
-                let v0 = mesh_a.vertices[edge.hd_vertex];
-                // grab the edge vector
-                let u = mesh_a.vertices[edge.tl_vertex] - v0;
-
-                // loop through all the faces on b
-                for (face_idx, face) in mesh_b.faces.iter().enumerate() {
-                    // grab two edges on the face. Because of the way the face
-                    // was generated, these edges are guaranteed to be
-                    // non-parallel.
-                    let (e0, e1) = (
-                        &mesh_b.edges[face.edges[0]],
-                        &mesh_b.edges[face.edges[1]],
-                    );
-                    // grab edge vectors
-                    let v = a.world_to_body(b.body_to_world(
-                        mesh_b.vertices[e0.tl_vertex]
-                            - mesh_b.vertices[e0.hd_vertex],
-                    ));
-                    let w = a.world_to_body(b.body_to_world(
-                        mesh_b.vertices[e1.tl_vertex]
-                            - mesh_b.vertices[e1.hd_vertex],
-                    ));
-
-                    // grab the normal vector adjacent to all
-                    let mut n =
-                        crate::alg::triple_cross_product(u, v, w).normalize();
-                    if !n.is_finite() {
-                        continue;
-                    }
-                    let mut dist_a = n.dot(v0);
-                    // ensure it's positive
-                    if dist_a < 0.0 {
-                        n = -n;
-                        dist_a = -dist_a;
-                    }
-                    let mut min_dist_b = dist_a;
-                    // let mut min_vertex_idx = 0;
-
-                    // loop through all the vertices on b
-                    for (vertex_idx, v) in mesh_b.vertices.iter().enumerate() {
-                        let dist_b =
-                            a.world_to_body(b.body_to_world(*v)).dot(n);
-                        if dist_b < min_dist_b {
-                            min_dist_b = dist_b;
-                            // min_vertex_idx = vertex_idx;
-                        }
-                    }
-
-                    if min_dist_b < dist_a {
-                        // Intersection along this axis
-                        if dist_a - min_dist_b > min_penetration {
-                            contact =
-                                Some(ContactData::EdgeFace(EdgeFaceContact {
-                                    side,
-                                    edge_idx,
-                                    face_idx,
-                                    normal: a.rotation.rotate(&n.into()).into(),
-                                }));
-                            min_penetration = dist_a - min_dist_b;
-                        }
-                    } else {
-                        // Found a separating axis!
-                        return true;
-                    }
-                }
-            }
-            return false;
-        };
-
-    if check_edge_faces(a, mesh_a, b, mesh_b, false) {
-        return None;
-    }
-
-    if check_edge_faces(b, mesh_b, a, mesh_a, true) {
-        return None;
-    }
-    */
 
     contact
 }
@@ -299,7 +312,7 @@ fn resolve_vertex_cell_contact(
         } else {
             face.hd_cell
         };
-        let clip_normal = a.world_vec_to_body(
+        let clip_normal = b.world_vec_to_body(
             a.body_vec_to_world(-mesh_a.cells[cell_idx].normal),
         );
         let clip_distance =
@@ -332,5 +345,64 @@ fn resolve_vertex_cell_contact(
         normal: a.body_vec_to_world(reference_cell.normal),
         depth: max_depth,
         contacts,
+    }
+}
+
+fn resolve_edge_face_contact(
+    a: &Body,
+    mesh_a: &Mesh,
+    b: &Body,
+    mesh_b: &Mesh,
+    contact: EdgeFaceContact,
+) -> CollisionManifold {
+    if !contact.side {
+        // just swap the meshes around in the call
+        let mut result = resolve_edge_face_contact(
+            b,
+            mesh_b,
+            a,
+            mesh_a,
+            EdgeFaceContact {
+                side: false,
+                ..contact
+            },
+        );
+        // flip the normal as the collision resolution code expects the normal
+        // to be oriented in a certain way
+        result.normal *= -1.0;
+        return result;
+    }
+
+    let EdgeFaceContact {
+        k,
+        t,
+        s,
+        u,
+        v,
+        normal,
+        ..
+    } = contact;
+
+    // Now we gotta solve an equation in three variables to get the closest point
+    // form the matrix
+    #[rustfmt::skip]
+    let mat = Matrix3::new(
+        t.dot(t), -t.dot(u), -t.dot(v),
+        -t.dot(u), u.dot(u), u.dot(v),
+        -t.dot(v), u.dot(v), v.dot(v),
+    );
+    // dbg!(mat);
+    // dbg!(mat.determinant());
+    let y = Vector3::new(-(k - s).dot(t), (k - s).dot(u), (k - s).dot(v));
+    let x = mat.invert().unwrap() * y;
+
+    let p1 = k + x.x * t;
+    let p2 = s + k.y * u + k.z * v;
+    let depth = (p1 - p2).magnitude();
+
+    CollisionManifold {
+        normal,
+        depth,
+        contacts: vec![p1 + p2 / 2.0],
     }
 }

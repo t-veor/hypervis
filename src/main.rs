@@ -209,7 +209,7 @@ impl Application for TestApp {
             body: Body {
                 mass: 1.0,
                 moment_inertia_scalar: 1.0 / 6.0,
-                material: Material { restitution: 0.4 },
+                material: Material { restitution: 0.2 },
                 stationary: false,
                 pos: Vector4::new(0.0, 1.5, 0.0, 0.0),
                 rotation: alg::Rotor4::identity(),
@@ -323,7 +323,7 @@ impl Application for TestApp {
             self.steps += 1;
         }
 
-        self.slice_plane.base_point.w = self.world.objects[7].body.pos.w;
+        // self.slice_plane.base_point.w = self.world.objects[7].body.pos.w;
     }
 
     fn render<'ui>(
@@ -346,6 +346,60 @@ impl Application for TestApp {
             if ui.button(im_str!("Step"), [0.0, 0.0]) {
                 self.step_requested = true;
             }
+
+            if ui.button(im_str!("Spawn a tesseract"), [0.0, 0.0]) {
+                let mesh = mesh::Mesh::from_schlafli_symbol(&[4, 3, 3]);
+                let tetrahedralized_mesh =
+                    mesh::TetrahedronMesh::from_mesh(&mesh, |normal| {
+                        use hsl::HSL;
+                        let (r, g, b) = HSL {
+                            h: 180.0
+                                * (normal.z as f64
+                                    + rand::random::<f64>() * 5.0
+                                    - 2.5)
+                                % 360.0
+                                + 360.0,
+                            s: 0.85,
+                            l: 0.5 + rand::random::<f64>() * 0.1,
+                        }
+                        .to_rgb();
+                        Vector4::new(
+                            r as f32 / 255.0,
+                            g as f32 / 255.0,
+                            b as f32 / 255.0,
+                            1.0,
+                        )
+                    });
+                let mesh_binding = self.slice_pipeline.create_mesh_binding(
+                    &graphics_ctx,
+                    &tetrahedralized_mesh.vertices,
+                    &tetrahedralized_mesh.indices,
+                );
+                self.world.objects.push(Object {
+                    body: Body {
+                        mass: 1.0,
+                        moment_inertia_scalar: 1.0 / 6.0,
+                        material: Material { restitution: 0.2 },
+                        stationary: false,
+                        pos: Vector4::new(0.0, 5.0, 0.0, 0.0),
+                        rotation: alg::Rotor4::identity(),
+                        vel: Velocity {
+                            linear: Vector4::zero(),
+                            angular: alg::Bivec4::new(
+                                rand::random::<f32>() * 5.0 - 2.5,
+                                rand::random::<f32>() * 5.0 - 2.5,
+                                rand::random::<f32>() * 5.0 - 2.5,
+                                rand::random::<f32>() * 5.0 - 2.5,
+                                rand::random::<f32>() * 5.0 - 2.5,
+                                rand::random::<f32>() * 5.0 - 2.5,
+                            ),
+                        },
+                        collider: Collider::Mesh { mesh },
+                    },
+                    mesh_binding: Some(mesh_binding),
+                });
+            }
+
             let vel = &mut self.world.objects[7].body.vel;
             if ui.button(im_str!("Bounce"), [0.0, 0.0]) {
                 vel.linear.x += rand::random::<f32>() * 20.0 - 10.0;
