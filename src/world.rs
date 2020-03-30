@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use crate::context::{
     graphics::{
-        MeshBinding, SlicePipeline, SlicePlane, Transform4,
-        TriangleListPipeline,
+        LineBinding, LinePipeline, MeshBinding, SlicePipeline, SlicePlane,
+        Transform4, TriangleListPipeline,
     },
     GraphicsContext,
 };
@@ -12,6 +12,7 @@ use crate::physics::{detect_collisions, Body, CollisionConstraint};
 pub struct Object {
     pub body: Body,
     pub mesh_binding: Option<MeshBinding>,
+    pub line_binding: Option<LineBinding>,
 }
 
 impl Object {
@@ -44,6 +45,36 @@ impl Object {
     ) {
         if let Some(mesh_binding) = &self.mesh_binding {
             pipeline.render(render_pass, mesh_binding);
+        }
+    }
+
+    pub fn prepare_lines(
+        &self,
+        graphics_ctx: &GraphicsContext,
+        pipeline: &LinePipeline,
+        encoder: &mut wgpu::CommandEncoder,
+    ) {
+        if let Some(line_binding) = &self.line_binding {
+            let transform = Transform4 {
+                displacement: self.body.pos,
+                transform: self.body.rotation.to_matrix(),
+            };
+            pipeline.update_binding(
+                graphics_ctx,
+                encoder,
+                &transform,
+                line_binding,
+            );
+        }
+    }
+
+    pub fn render_lines(
+        &self,
+        pipeline: &LinePipeline,
+        render_pass: &mut wgpu::RenderPass,
+    ) {
+        if let Some(line_binding) = &self.line_binding {
+            pipeline.render(render_pass, line_binding);
         }
     }
 }
@@ -127,6 +158,27 @@ impl World {
     ) {
         for i in self.objects.iter() {
             i.render(pipeline, render_pass);
+        }
+    }
+
+    pub fn prepare_lines(
+        &self,
+        graphics_ctx: &GraphicsContext,
+        pipeline: &LinePipeline,
+        encoder: &mut wgpu::CommandEncoder,
+    ) {
+        for i in self.objects.iter() {
+            i.prepare_lines(graphics_ctx, pipeline, encoder);
+        }
+    }
+
+    pub fn render_lines(
+        &self,
+        pipeline: &LinePipeline,
+        render_pass: &mut wgpu::RenderPass,
+    ) {
+        for i in self.objects.iter() {
+            i.render_lines(pipeline, render_pass);
         }
     }
 }

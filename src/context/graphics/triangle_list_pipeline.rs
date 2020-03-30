@@ -1,5 +1,5 @@
 use super::{
-    GraphicsContext, MeshBinding, Vertex4, ViewProjection, DEPTH_FORMAT,
+    GraphicsContext, MeshBinding, Vertex4, ViewProjection3, DEPTH_FORMAT,
 };
 
 use anyhow::{anyhow, Context, Result};
@@ -36,7 +36,7 @@ impl TriangleListPipeline {
                 1,
                 wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
             )
-            .fill_from_slice(&[ViewProjection::default()]);
+            .fill_from_slice(&[ViewProjection3::default()]);
 
         let uniform_bind_group_layout = ctx.device.create_bind_group_layout(
             &wgpu::BindGroupLayoutDescriptor {
@@ -55,7 +55,7 @@ impl TriangleListPipeline {
                     binding: 0,
                     resource: wgpu::BindingResource::Buffer {
                         buffer: &view_proj_buffer,
-                        range: 0..std::mem::size_of::<ViewProjection>()
+                        range: 0..std::mem::size_of::<ViewProjection3>()
                             as wgpu::BufferAddress,
                     },
                 }],
@@ -119,7 +119,7 @@ impl TriangleListPipeline {
     pub fn update_view_proj(
         &self,
         ctx: &mut GraphicsContext,
-        view_proj: &ViewProjection,
+        view_proj: &ViewProjection3,
     ) {
         let mut encoder = ctx.device.create_command_encoder(
             &wgpu::CommandEncoderDescriptor { todo: 0 },
@@ -135,7 +135,7 @@ impl TriangleListPipeline {
                 0,
                 &self.view_proj_buffer,
                 0,
-                std::mem::size_of::<ViewProjection>() as wgpu::BufferAddress,
+                std::mem::size_of::<ViewProjection3>() as wgpu::BufferAddress,
             );
         }
         ctx.queue.submit(&[encoder.finish()]);

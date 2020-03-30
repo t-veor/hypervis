@@ -10,8 +10,8 @@ use cgmath::{Matrix4, Point3, Vector4, Zero};
 use winit::event::WindowEvent;
 
 use context::graphics::{
-    SlicePipeline, SlicePlane, TriangleListPipeline, ViewProjection,
-    DEPTH_FORMAT,
+    LinePipeline, SlicePipeline, SlicePlane, TriangleListPipeline,
+    ViewProjection3, ViewProjection4, DEPTH_FORMAT,
 };
 use context::{Application, Ctx, GraphicsContext};
 use physics::{Body, Collider, Material, Velocity};
@@ -19,11 +19,13 @@ use world::{Object, World};
 
 struct TestApp {
     render_pipeline: TriangleListPipeline,
+    line_pipeline: LinePipeline,
     slice_pipeline: SlicePipeline,
     slice_plane: SlicePlane,
     depth_texture: wgpu::Texture,
     depth_texture_view: wgpu::TextureView,
-    view_proj: ViewProjection,
+    view_proj3: ViewProjection3,
+    view_proj4: ViewProjection4,
     world: World,
     frames: usize,
     step_requested: bool,
@@ -64,6 +66,8 @@ impl Application for TestApp {
             TriangleListPipeline::new(&ctx.graphics_ctx).unwrap();
         let slice_pipeline = SlicePipeline::new(&ctx.graphics_ctx).unwrap();
 
+        let line_pipeline = LinePipeline::new(&ctx.graphics_ctx).unwrap();
+
         let mut world = World::new();
 
         let floor_mesh = mesh4::floor(2.0 * ARENA_SIZE);
@@ -86,6 +90,7 @@ impl Application for TestApp {
                 },
             },
             mesh_binding: Some(floor_mesh_binding),
+            line_binding: None,
         });
 
         // side walls
@@ -103,6 +108,7 @@ impl Application for TestApp {
                 },
             },
             mesh_binding: None,
+            line_binding: None,
         });
         world.objects.push(Object {
             body: Body {
@@ -118,6 +124,7 @@ impl Application for TestApp {
                 },
             },
             mesh_binding: None,
+            line_binding: None,
         });
         world.objects.push(Object {
             body: Body {
@@ -133,6 +140,7 @@ impl Application for TestApp {
                 },
             },
             mesh_binding: None,
+            line_binding: None,
         });
         world.objects.push(Object {
             body: Body {
@@ -148,6 +156,7 @@ impl Application for TestApp {
                 },
             },
             mesh_binding: None,
+            line_binding: None,
         });
         world.objects.push(Object {
             body: Body {
@@ -163,6 +172,7 @@ impl Application for TestApp {
                 },
             },
             mesh_binding: None,
+            line_binding: None,
         });
         world.objects.push(Object {
             body: Body {
@@ -178,6 +188,7 @@ impl Application for TestApp {
                 },
             },
             mesh_binding: None,
+            line_binding: None,
         });
 
         let mesh = mesh::Mesh::from_schlafli_symbol(&[4, 3, 3]);
@@ -205,6 +216,11 @@ impl Application for TestApp {
             &tetrahedralized_mesh.vertices,
             &tetrahedralized_mesh.indices,
         );
+        let line_binding = line_pipeline.create_binding(
+            &ctx.graphics_ctx,
+            &mesh,
+            Vector4::new(1.0, 0.0, 0.0, 1.0),
+        );
         world.objects.push(Object {
             body: Body {
                 mass: 1.0,
@@ -217,9 +233,15 @@ impl Application for TestApp {
                 collider: Collider::Mesh { mesh },
             },
             mesh_binding: Some(mesh_binding),
+            line_binding: Some(line_binding),
         });
 
         let mesh = mesh::Mesh::from_schlafli_symbol(&[4, 3, 3]);
+        let line_binding = line_pipeline.create_binding(
+            &ctx.graphics_ctx,
+            &mesh,
+            Vector4::new(0.0, 0.0, 1.0, 1.0),
+        );
         let tetrahedralized_mesh =
             mesh::TetrahedronMesh::from_mesh(&mesh, |normal| {
                 use hsl::HSL;
@@ -256,14 +278,23 @@ impl Application for TestApp {
                 collider: Collider::Mesh { mesh },
             },
             mesh_binding: Some(mesh_binding),
+            line_binding: Some(line_binding),
         });
 
-        let view_proj = ViewProjection::new(
+        let view_proj3 = ViewProjection3::new(
             ctx,
             90.0,
             Point3::new(1.0, 5.0, -5.0),
             Point3::new(0.0, 1.0, 0.0),
         );
+        let view_proj4 = ViewProjection4::new(
+            45.0,
+            Vector4::new(0.0, 0.0, 0.0, 1.0),
+            Vector4::new(0.0, 0.0, 0.0, 0.0),
+            Vector4::new(0.0, 0.0, 1.0, 0.0),
+        );
+
+        dbg!(view_proj4);
 
         let depth_texture =
             ctx.graphics_ctx
@@ -277,11 +308,13 @@ impl Application for TestApp {
 
         TestApp {
             render_pipeline,
+            line_pipeline,
             slice_pipeline,
             slice_plane,
             depth_texture,
             depth_texture_view,
-            view_proj,
+            view_proj3,
+            view_proj4,
             world,
             frames: 0,
             step_requested: false,
@@ -291,7 +324,7 @@ impl Application for TestApp {
 
     fn resize(&mut self, ctx: &mut Ctx) {
         // update the projection
-        self.view_proj = ViewProjection::new(
+        self.view_proj3 = ViewProjection3::new(
             ctx,
             90.0,
             Point3::new(1.0, 5.0, -5.0),
@@ -375,6 +408,22 @@ impl Application for TestApp {
                     &tetrahedralized_mesh.vertices,
                     &tetrahedralized_mesh.indices,
                 );
+                let (r, g, b) = hsl::HSL {
+                    h: 360.0 * rand::random::<f64>(),
+                    s: 0.85,
+                    l: 0.5,
+                }
+                .to_rgb();
+                let line_binding = self.line_pipeline.create_binding(
+                    &graphics_ctx,
+                    &mesh,
+                    Vector4::new(
+                        r as f32 / 255.0,
+                        g as f32 / 255.0,
+                        b as f32 / 255.0,
+                        1.0,
+                    ),
+                );
                 self.world.objects.push(Object {
                     body: Body {
                         mass: 1.0,
@@ -397,6 +446,7 @@ impl Application for TestApp {
                         collider: Collider::Mesh { mesh },
                     },
                     mesh_binding: Some(mesh_binding),
+                    line_binding: Some(line_binding),
                 });
             }
 
@@ -441,19 +491,34 @@ impl Application for TestApp {
             &wgpu::CommandEncoderDescriptor { todo: 0 },
         );
 
+        /*
         self.world.compute(
             graphics_ctx,
             &self.slice_pipeline,
             &mut encoder,
             &self.slice_plane,
         );
+        */
+
+        self.world.prepare_lines(
+            graphics_ctx,
+            &self.line_pipeline,
+            &mut encoder,
+        );
 
         // for some reason I need to do the compute and render passes in two
         // goes to have it work on vulkan without visual glitches
         graphics_ctx.queue.submit(&[encoder.finish()]);
 
+        /*
         self.render_pipeline
-            .update_view_proj(graphics_ctx, &self.view_proj);
+            .update_view_proj(graphics_ctx, &self.view_proj3);
+            */
+        self.line_pipeline.update_view_proj(
+            graphics_ctx,
+            &self.view_proj3,
+            &self.view_proj4,
+        );
 
         let mut encoder = graphics_ctx.device.create_command_encoder(
             &wgpu::CommandEncoderDescriptor { todo: 0 },
@@ -489,7 +554,9 @@ impl Application for TestApp {
                     ),
                 });
 
-            self.world.render(&self.render_pipeline, &mut render_pass);
+            // self.world.render(&self.render_pipeline, &mut render_pass);
+            self.world
+                .render_lines(&self.line_pipeline, &mut render_pass);
         }
 
         graphics_ctx.queue.submit(&[encoder.finish()]);
