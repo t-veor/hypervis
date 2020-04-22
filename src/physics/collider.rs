@@ -1,5 +1,6 @@
 use super::Body;
 use crate::mesh::{ClipMesh, Mesh};
+use crate::util::EPSILON;
 
 use cgmath::{
     Array, InnerSpace, Matrix3, SquareMatrix, Vector3, Vector4, Zero,
@@ -78,7 +79,6 @@ pub fn detect_collisions(a: &Body, b: &Body) -> Option<CollisionManifold> {
         _ => None,
     }
 }
-
 #[derive(Debug)]
 struct VertexCellContact {
     // if true indicates that the vertex is on body b but the cell is on body a
@@ -114,92 +114,6 @@ fn mesh_sat(
 ) -> Option<ContactData> {
     let mut contact = None;
     let mut min_penetration = std::f32::INFINITY;
-
-    // Check for edge-face intersections
-    let mut check_edge_faces =
-        |a: &Body, mesh_a: &Mesh, b: &Body, mesh_b: &Mesh, side: bool| {
-            for edge in mesh_a.edges.iter() {
-                // grab a representative vertex on the edge
-                let v0 = mesh_a.vertices[edge.hd_vertex];
-                // grab the edge vector
-                let u = mesh_a.vertices[edge.tl_vertex] - v0;
-
-                // loop through all the faces on b
-                for face in mesh_b.faces.iter() {
-                    // grab two edges on the face. Because of the way the face
-                    // was generated, these edges are guaranteed to be
-                    // non-parallel.
-                    let (e0, e1) = (
-                        &mesh_b.edges[face.edges[0]],
-                        &mesh_b.edges[face.edges[1]],
-                    );
-                    // grab edge vectors
-                    let v = a.world_vec_to_body(b.body_vec_to_world(
-                        mesh_b.vertices[e0.tl_vertex]
-                            - mesh_b.vertices[e0.hd_vertex],
-                    ));
-                    let w = a.world_vec_to_body(b.body_vec_to_world(
-                        mesh_b.vertices[e1.tl_vertex]
-                            - mesh_b.vertices[e1.hd_vertex],
-                    ));
-
-                    // grab the normal vector adjacent to all
-                    let mut n =
-                        crate::alg::triple_cross_product(u, v, w).normalize();
-                    if !n.is_finite() {
-                        continue;
-                    }
-                    let mut dist_a = n.dot(v0);
-                    // ensure it's positive
-                    if dist_a < 0.0 {
-                        n = -n;
-                        dist_a = -dist_a;
-                    }
-                    let mut min_dist_b = dist_a;
-
-                    // loop through all the vertices on b
-                    for v in mesh_b.vertices.iter() {
-                        let dist_b =
-                            a.world_pos_to_body(b.body_pos_to_world(*v)).dot(n);
-                        if dist_b < min_dist_b {
-                            min_dist_b = dist_b;
-                        }
-                    }
-
-                    if min_dist_b < dist_a {
-                        // Intersection along this axis
-                        if dist_a - min_dist_b > min_penetration {
-                            contact =
-                                Some(ContactData::EdgeFace(EdgeFaceContact {
-                                    side,
-                                    k: a.body_pos_to_world(v0),
-                                    t: a.body_vec_to_world(u),
-                                    s: b.body_pos_to_world(
-                                        mesh_b.vertices[e0.hd_vertex],
-                                    ),
-                                    u: a.body_vec_to_world(v),
-                                    v: a.body_vec_to_world(w),
-                                    normal: a.body_vec_to_world(n),
-                                }));
-                            min_penetration = dist_a - min_dist_b;
-                        }
-                    } else {
-                        return true;
-                    }
-                }
-            }
-            return false;
-        };
-
-    /*
-    if check_edge_faces(a, mesh_a, b, mesh_b, false) {
-        return None;
-    }
-
-    if check_edge_faces(b, mesh_b, a, mesh_a, true) {
-        return None;
-    }
-    */
 
     // Check for vertex-cell intersections
     let mut check_vertex_cell =
@@ -254,7 +168,132 @@ fn mesh_sat(
         return None;
     }
 
+    // Check for edge-face intersections
+    if check_edge_faces(
+        a,
+        mesh_a,
+        b,
+        mesh_b,
+        false,
+        &mut min_penetration,
+        &mut contact,
+    ) {
+        return None;
+    }
+
+    if check_edge_faces(
+        b,
+        mesh_b,
+        a,
+        mesh_a,
+        true,
+        &mut min_penetration,
+        &mut contact,
+    ) {
+        return None;
+    }
+
     contact
+}
+
+fn check_edge_faces(
+    a: &Body,
+    mesh_a: &Mesh,
+    b: &Body,
+    mesh_b: &Mesh,
+    side: bool,
+    min_penetration: &mut f32,
+    contact: &mut Option<ContactData>,
+) -> bool {
+    for edge in mesh_a.edges.iter() {
+        // grab a representative vertex on the edge
+        let v0 = mesh_a.vertices[edge.hd_vertex];
+        // grab the edge vector
+        let u = mesh_a.vertices[edge.tl_vertex] - v0;
+
+        let edge_cells: Vec<_> = {
+            let mut cells = Vec::new();
+            if let Some(face_idx) = edge.faces.first() {
+                let face = &mesh_a.faces[*face_idx];
+                cells.push(face.hd_cell);
+                cells.push(face.tl_cell);
+
+                for face_idx in edge.faces.iter().skip(1) {
+                    let face = &mesh_a.faces[*face_idx];
+                    if !cells.contains(&face.hd_cell) {
+                        cells.push(face.hd_cell);
+                    } else if !cells.contains(&face.tl_cell) {
+                        cells.push(face.tl_cell);
+                    }
+                }
+            }
+            cells.into_iter().map(|i| mesh_a.cells[i].normal).collect()
+        };
+
+        // loop through all the faces on b
+        for face in mesh_b.faces.iter() {
+            let c0 = a.world_vec_to_body(
+                b.body_vec_to_world(mesh_b.cells[face.hd_cell].normal),
+            );
+            let c1 = a.world_vec_to_body(
+                b.body_vec_to_world(mesh_b.cells[face.tl_cell].normal),
+            );
+            if !minkowski_edge_face_check(&edge_cells, (-c0, -c1)) {
+                continue;
+            }
+
+            // grab two edges on the face. Because of the way the face
+            // was generated, these edges are guaranteed to be
+            // non-parallel.
+            let (e0, e1) =
+                (&mesh_b.edges[face.edges[0]], &mesh_b.edges[face.edges[1]]);
+            // grab edge vectors
+            let v = a.world_vec_to_body(b.body_vec_to_world(
+                mesh_b.vertices[e0.tl_vertex] - mesh_b.vertices[e0.hd_vertex],
+            ));
+            let w = a.world_vec_to_body(b.body_vec_to_world(
+                mesh_b.vertices[e1.tl_vertex] - mesh_b.vertices[e1.hd_vertex],
+            ));
+
+            // grab a vector on the face also
+            let v1 = a.world_pos_to_body(
+                b.body_pos_to_world(mesh_b.vertices[e0.hd_vertex]),
+            );
+
+            // grab the normal vector adjacent to all
+            let mut n = crate::alg::triple_cross_product(u, v, w).normalize();
+            if !n.is_finite() {
+                continue;
+            }
+            // ensure that n points from a to b
+            let mut dist_a = n.dot(v0);
+            if dist_a < 0.0 {
+                n = -n;
+                dist_a = -dist_a;
+            }
+
+            let dist_b = n.dot(v1);
+
+            if dist_b < dist_a {
+                // Intersection along this axis
+                if dist_a - dist_b < *min_penetration {
+                    *contact = Some(ContactData::EdgeFace(EdgeFaceContact {
+                        side,
+                        k: a.body_pos_to_world(v0),
+                        t: a.body_vec_to_world(u),
+                        s: b.body_pos_to_world(mesh_b.vertices[e0.hd_vertex]),
+                        u: a.body_vec_to_world(v),
+                        v: a.body_vec_to_world(w),
+                        normal: a.body_vec_to_world(n),
+                    }));
+                    *min_penetration = dist_a - dist_b;
+                }
+            } else {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 fn resolve_vertex_cell_contact(
@@ -355,7 +394,7 @@ fn resolve_edge_face_contact(
     mesh_b: &Mesh,
     contact: EdgeFaceContact,
 ) -> CollisionManifold {
-    if !contact.side {
+    if contact.side {
         // just swap the meshes around in the call
         let mut result = resolve_edge_face_contact(
             b,
@@ -397,12 +436,119 @@ fn resolve_edge_face_contact(
     let x = mat.invert().unwrap() * y;
 
     let p1 = k + x.x * t;
-    let p2 = s + k.y * u + k.z * v;
+    let p2 = s + x.y * u + x.z * v;
     let depth = (p1 - p2).magnitude();
 
     CollisionManifold {
         normal,
         depth,
-        contacts: vec![p1 + p2 / 2.0],
+        contacts: vec![(p1 + p2) / 2.0],
+    }
+}
+
+fn minkowski_edge_face_check(
+    edge_cells: &Vec<Vector4<f32>>,
+    face_cells: (Vector4<f32>, Vector4<f32>),
+) -> bool {
+    // grab the normal corresponding to the great sphere the edge lies in
+    let normal = if let &[a, b, c, ..] = &edge_cells[..] {
+        crate::alg::triple_cross_product(a, b, c)
+    } else {
+        return false;
+    };
+
+    // intersect the plane defined by the face with the hyperplane, giving us a
+    // line
+    let (u, v) = face_cells;
+    let factor = -v.dot(normal) / u.dot(normal);
+    if !factor.is_finite() {
+        return false;
+    }
+    let t = u * factor + v;
+    // intersect t with the great sphere, giving us two points
+    let s0 = t.normalize();
+    let s1 = -s0;
+
+    // check that either s0 or s1 are inside the great arc
+    let s = {
+        let target_angle = u.dot(v).acos();
+        let s0_u = s0.dot(u).acos();
+        let s0_v = s0.dot(v).acos();
+        let s1_u = s1.dot(u).acos();
+        let s1_v = s1.dot(v).acos();
+
+        if (target_angle - s0_u - s0_v).abs() < EPSILON {
+            s0
+        } else if (target_angle - s1_u - s1_v).abs() < EPSILON {
+            s1
+        } else {
+            // neither s0 nor s1 are in the arc
+            return false;
+        }
+    };
+
+    // now check if s is actually in the spherical polygon corresponding to the edge
+    for i in 0..edge_cells.len() {
+        let (u, v, w) = (
+            edge_cells[i],
+            edge_cells[(i + 1) % edge_cells.len()],
+            edge_cells[(i + 2) % edge_cells.len()],
+        );
+        let n = crate::alg::triple_cross_product(u, v, normal);
+        // check that s is on the same side of the sphere as another point in the polygon, w
+        if s.dot(n) * w.dot(n) < 0.0 {
+            return false;
+        }
+    }
+
+    // s is indeed an intersection!
+    true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::alg::Bivec4;
+    use crate::physics::Material;
+    use crate::physics::Velocity;
+
+    #[test]
+    pub fn edge_edge_separation() {
+        let tess = Mesh::from_schlafli_symbol(&[4, 3, 3]);
+
+        let tess_a = Body {
+            mass: 1.0,
+            moment_inertia_scalar: 1.0 / 6.0,
+            material: Material { restitution: 0.4 },
+            stationary: false,
+            pos: Vector4::new(0.0, 0.0, 0.0, 0.0),
+            rotation: Bivec4::new(
+                0.0,
+                std::f32::consts::FRAC_PI_8,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+            )
+            .exp(),
+            vel: Velocity::zero(),
+            collider: Collider::Mesh { mesh: tess.clone() },
+        };
+
+        let tess_b = Body {
+            pos: Vector4::new(std::f32::consts::SQRT_2 - 0.1, 0.0, 0.0, 0.0),
+            rotation: Bivec4::new(
+                std::f32::consts::FRAC_PI_8,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+            )
+            .exp(),
+            ..tess_a.clone()
+        };
+
+        dbg!(detect_collisions(&tess_a, &tess_b));
     }
 }

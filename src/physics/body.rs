@@ -57,12 +57,6 @@ impl Body {
         }
     }
 
-    pub fn apply_projection(&mut self, projection: Vector4<f32>) {
-        if !self.stationary {
-            self.pos += projection;
-        }
-    }
-
     pub fn step(&mut self, dt: f32) {
         if !self.stationary {
             // apply gravity

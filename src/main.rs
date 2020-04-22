@@ -3,6 +3,7 @@ mod context;
 mod mesh;
 mod mesh4;
 mod physics;
+mod util;
 mod world;
 
 use anyhow::Result;

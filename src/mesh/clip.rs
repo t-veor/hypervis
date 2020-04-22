@@ -5,7 +5,7 @@ use cgmath::{InnerSpace, Vector4};
 use smallvec::{smallvec, SmallVec};
 use std::collections::HashMap;
 
-pub const EPSILON: f32 = 0.0001;
+use crate::util::EPSILON;
 
 #[derive(Debug)]
 struct ClipVertex {

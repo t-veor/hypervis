@@ -76,14 +76,6 @@ impl Mesh {
         // determine the mirror normals
         let mirror_normals = get_mirror_normals(symbol);
 
-        // pick a v0 so that it's on planes 1, 2, and 3, but not on 0
-        // set v_0.x = 1 arbitrarily
-        let mut v0: Vector4<f32> = Vector4::unit_x();
-        v0.y = -mirror_normals[1].x * v0.x / mirror_normals[1].y;
-        v0.z = -mirror_normals[2].y * v0.y / mirror_normals[2].z;
-        v0.w = -mirror_normals[3].z * v0.z / mirror_normals[3].w;
-        v0 = v0.normalize();
-
         // setup for todd-coxeter
         let num_gens = 4;
         let relations: &[&[usize]] = &[
@@ -101,26 +93,58 @@ impl Mesh {
 
         let vertex_table =
             todd_coxeter::coset_table(num_gens, relations, &[1, 2, 3]);
+
+        let edge_table =
+            todd_coxeter::coset_table(num_gens, relations, &[0, 2, 3]);
+
+        let face_table =
+            todd_coxeter::coset_table(num_gens, relations, &[0, 1, 3]);
+
+        let cell_table =
+            todd_coxeter::coset_table(num_gens, relations, &[0, 1, 2]);
+
+        // pick a v0 so that it's on planes 1, 2, and 3, but not on 0
+        // set v_0.x = 1 arbitrarily
+        let mut v0: Vector4<f32> = Vector4::unit_x();
+        v0.y = -mirror_normals[1].x * v0.x / mirror_normals[1].y;
+        v0.z = -mirror_normals[2].y * v0.y / mirror_normals[2].z;
+        v0.w = -mirror_normals[3].z * v0.z / mirror_normals[3].w;
+        v0 = v0.normalize();
         let vertices =
             todd_coxeter::table_bfs_fold(&vertex_table, 0, v0, |v, mirror| {
                 reflect(v, mirror_normals[mirror])
             });
 
-        let edge_table =
-            todd_coxeter::coset_table(num_gens, relations, &[0, 2, 3]);
-        // the initial edge is guaranteed to be (0, 1)
-        let e0 = (0, 1);
-        let edge_tmp = todd_coxeter::table_bfs_fold(
-            &edge_table,
-            0,
-            e0,
-            |(v0, v1), mirror| {
-                (vertex_table[v0][mirror], vertex_table[v1][mirror])
-            },
-        );
+        let e0 = {
+            // The initial
+            let mut faces: SmallVec<[usize; 8]> = SmallVec::new();
+            let mut curr_face = 0;
+            loop {
+                faces.push(curr_face);
+                curr_face = face_table[face_table[curr_face][2]][3];
+                if curr_face == 0 {
+                    break;
+                }
+            }
+            Edge {
+                hd_vertex: 0,
+                tl_vertex: 1,
+                faces,
+            }
+        };
+        let edges =
+            todd_coxeter::table_bfs_fold(&edge_table, 0, e0, |e, mirror| {
+                Edge {
+                    hd_vertex: vertex_table[e.hd_vertex][mirror],
+                    tl_vertex: vertex_table[e.tl_vertex][mirror],
+                    faces: e
+                        .faces
+                        .into_iter()
+                        .map(|f| face_table[f][mirror])
+                        .collect(),
+                }
+            });
 
-        let face_table =
-            todd_coxeter::coset_table(num_gens, relations, &[0, 1, 3]);
         // the initial face is all the edges invariant under the rotation (0, 1)
         let f0 = {
             let mut edges: SmallVec<[usize; 8]> = SmallVec::new();
@@ -139,8 +163,7 @@ impl Mesh {
                 f.into_iter().map(|e| edge_table[e][mirror]).collect()
             });
 
-        let cell_table =
-            todd_coxeter::coset_table(num_gens, relations, &[0, 1, 2]);
+
         // The initial cell is invariant under mirrors 0, 1, and 2.
         // So, if we just apply mirrors 0, 1, and 2 to the inital face a
         // whole bunch of times, we should recover all the faces in the initial
@@ -180,15 +203,6 @@ impl Mesh {
             },
         );
 
-        let mut edges: Vec<_> = edge_tmp
-            .into_iter()
-            .map(|(v0, v1)| Edge {
-                hd_vertex: v0,
-                tl_vertex: v1,
-                faces: SmallVec::new(),
-            })
-            .collect();
-
         let mut faces: Vec<_> = face_tmp
             .into_iter()
             .map(|edges| Face {
@@ -197,13 +211,6 @@ impl Mesh {
                 edges,
             })
             .collect();
-
-        // populate faces for each edge
-        for (i, face) in faces.iter().enumerate() {
-            for j in face.edges.iter() {
-                edges[*j].faces.push(i);
-            }
-        }
 
         // populate cells for each face
         for (i, cell) in cells.iter().enumerate() {
@@ -255,6 +262,11 @@ mod test {
 
     #[test]
     fn schlafli() {
-        dbg!(Mesh::from_schlafli_symbol(&[3, 3, 3]));
+        Mesh::from_schlafli_symbol(&[3, 3, 3]);
+        Mesh::from_schlafli_symbol(&[4, 3, 3]);
+        Mesh::from_schlafli_symbol(&[5, 3, 3]);
+        Mesh::from_schlafli_symbol(&[3, 4, 3]);
+        Mesh::from_schlafli_symbol(&[3, 3, 4]);
+        Mesh::from_schlafli_symbol(&[3, 3, 5]);
     }
 }
