@@ -1,3 +1,4 @@
+use slotmap::{new_key_type, DenseSlotMap};
 use std::collections::HashMap;
 
 use crate::context::{
@@ -7,7 +8,7 @@ use crate::context::{
     },
     GraphicsContext,
 };
-use crate::physics::{detect_collisions, Body, CollisionConstraint};
+use crate::physics::{Body, CollisionConstraint, CollisionDetection};
 
 pub struct Object {
     pub body: Body,
@@ -48,32 +49,61 @@ impl Object {
     }
 }
 
+new_key_type! { pub struct ObjectKey; }
+
 pub struct World {
-    pub objects: Vec<Object>,
+    pub objects: DenseSlotMap<ObjectKey, Object>,
+    pub collision: CollisionDetection,
+}
+
+fn slotmap_get_mut2<K, V>(
+    map: &mut DenseSlotMap<K, V>,
+    i: K,
+    j: K,
+) -> (&mut V, &mut V)
+where
+    K: slotmap::Key + std::cmp::Eq,
+{
+    assert!(i != j);
+
+    unsafe {
+        let a = std::mem::transmute::<_, _>(map.get_mut(i).unwrap());
+        let b = std::mem::transmute::<_, _>(map.get_mut(j).unwrap());
+
+        return (a, b);
+    }
 }
 
 impl World {
     pub fn new() -> Self {
         Self {
-            objects: Vec::new(),
+            objects: DenseSlotMap::with_key(),
+            collision: CollisionDetection::new(),
         }
     }
 
     pub fn update(&mut self, dt: f32) {
         let mut collisions = Vec::new();
         let mut mass_adjustments = HashMap::new();
-        for i in 0..self.objects.len() {
-            for j in i + 1..self.objects.len() {
-                if let Some(manifold) = detect_collisions(
-                    &self.objects[i].body,
-                    &self.objects[j].body,
-                ) {
+
+        let object_keys: Vec<_> = self.objects.keys().collect();
+
+        for i in 0..object_keys.len() {
+            for j in i + 1..object_keys.len() {
+                let ka = object_keys[i];
+                let kb = object_keys[j];
+                let a = &self.objects[ka];
+                let b = &self.objects[kb];
+
+                if let Some(manifold) =
+                    self.collision.detect_collisions((ka, kb), &a.body, &b.body)
+                {
                     if manifold.contacts.len() == 0 {
                         continue;
                     }
-                    *mass_adjustments.entry(i).or_insert(0) += 1;
-                    *mass_adjustments.entry(j).or_insert(0) += 1;
-                    collisions.push((i, j, manifold));
+                    *mass_adjustments.entry(ka).or_insert(0) += 1;
+                    *mass_adjustments.entry(kb).or_insert(0) += 1;
+                    collisions.push((ka, kb, manifold));
                 }
             }
         }
@@ -96,14 +126,12 @@ impl World {
         const SOLVER_ITERS: usize = 20;
         for _ in 0..SOLVER_ITERS {
             for (i, j, constraint) in constraints.iter_mut() {
-                assert!(i < j);
-
-                let (head, tail) = self.objects.split_at_mut(*j);
-                constraint.solve(&mut head[*i].body, &mut tail[0].body);
+                let (a, b) = slotmap_get_mut2(&mut self.objects, *i, *j);
+                constraint.solve(&mut a.body, &mut b.body);
             }
         }
 
-        for object in self.objects.iter_mut() {
+        for object in self.objects.values_mut() {
             object.body.step(dt);
         }
     }
@@ -115,7 +143,7 @@ impl World {
         encoder: &mut wgpu::CommandEncoder,
         slice_plane: &SlicePlane,
     ) {
-        for i in self.objects.iter() {
+        for i in self.objects.values() {
             i.compute(graphics_ctx, pipeline, encoder, slice_plane);
         }
     }
@@ -125,7 +153,7 @@ impl World {
         pipeline: &TriangleListPipeline,
         render_pass: &mut wgpu::RenderPass,
     ) {
-        for i in self.objects.iter() {
+        for i in self.objects.values() {
             i.render(pipeline, render_pass);
         }
     }

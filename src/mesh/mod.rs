@@ -35,6 +35,7 @@ pub struct Cell {
 
 #[derive(Debug, Clone)]
 pub struct Mesh {
+    pub radius: f32,
     pub vertices: Vec<Vector4<f32>>,
     pub vertex_data: Vec<VertexData>,
     pub edges: Vec<Edge>,
@@ -163,7 +164,6 @@ impl Mesh {
                 f.into_iter().map(|e| edge_table[e][mirror]).collect()
             });
 
-
         // The initial cell is invariant under mirrors 0, 1, and 2.
         // So, if we just apply mirrors 0, 1, and 2 to the inital face a
         // whole bunch of times, we should recover all the faces in the initial
@@ -247,6 +247,7 @@ impl Mesh {
         }
 
         Self {
+            radius: 1.0,
             vertices,
             vertex_data,
             edges,

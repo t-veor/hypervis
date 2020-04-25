@@ -13,6 +13,8 @@ cgmath = "0.17"
 mint = "0.5"
 hsl = "0.1"
 rand = "0.7"
+lru = "0.4"
+slotmap = "0.4"
 smallvec = "1.2"
 imgui = "0.3"
 imgui-winit-support = { version = "0.3", features = ["winit-20"]}

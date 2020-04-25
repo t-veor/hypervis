@@ -1,6 +1,7 @@
 use super::Body;
 use crate::mesh::{ClipMesh, Mesh};
 use crate::util::EPSILON;
+use crate::world::ObjectKey;
 
 use cgmath::{
     Array, InnerSpace, Matrix3, SquareMatrix, Vector3, Vector4, Zero,
@@ -20,65 +21,12 @@ pub struct CollisionManifold {
     pub contacts: Vec<Vector4<f32>>,
 }
 
-pub fn detect_collisions(a: &Body, b: &Body) -> Option<CollisionManifold> {
-    match (&a.collider, &b.collider) {
-        (Collider::HalfSpace { normal }, Collider::Mesh { mesh }) => {
-            let plane_distance = a.pos.dot(*normal);
-            let mut max_depth = 0.0;
-
-            let contacts: Vec<_> = mesh
-                .vertices
-                .iter()
-                .filter_map(|position| {
-                    let pos = b.body_pos_to_world(*position);
-
-                    let distance = pos.dot(*normal);
-
-                    let depth = plane_distance - distance;
-                    if depth > 0.0 {
-                        if depth > max_depth {
-                            max_depth = depth;
-                        }
-                        Some(pos)
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-
-            if contacts.len() > 0 {
-                Some(CollisionManifold {
-                    normal: *normal,
-                    depth: max_depth,
-                    contacts,
-                })
-            } else {
-                None
-            }
-        }
-        (Collider::Mesh { .. }, Collider::HalfSpace { .. }) => {
-            // Just call this again with the arguments swapped
-            detect_collisions(b, a)
-        }
-        (Collider::Mesh { mesh: mesh_a }, Collider::Mesh { mesh: mesh_b }) => {
-            if let Some(contact) = mesh_sat(a, mesh_a, b, mesh_b) {
-                // dbg!(&contact);
-                return Some(match contact {
-                    ContactData::VertexCell(contact) => {
-                        resolve_vertex_cell_contact(
-                            a, mesh_a, b, mesh_b, contact,
-                        )
-                    }
-                    ContactData::EdgeFace(contact) => {
-                        resolve_edge_face_contact(a, mesh_a, b, mesh_b, contact)
-                    }
-                });
-            }
-            None
-        }
-        _ => None,
-    }
+#[derive(Copy, Clone)]
+struct MeshRef<'a> {
+    body: &'a Body,
+    mesh: &'a Mesh,
 }
+
 #[derive(Debug)]
 struct VertexCellContact {
     // if true indicates that the vertex is on body b but the cell is on body a
@@ -106,210 +54,425 @@ enum ContactData {
     EdgeFace(EdgeFaceContact),
 }
 
-fn mesh_sat(
-    a: &Body,
-    mesh_a: &Mesh,
-    b: &Body,
-    mesh_b: &Mesh,
-) -> Option<ContactData> {
-    let mut contact = None;
-    let mut min_penetration = std::f32::INFINITY;
-
-    // Check for vertex-cell intersections
-    let mut check_vertex_cell =
-        |a: &Body, mesh_a: &Mesh, b: &Body, mesh_b: &Mesh, side: bool| {
-            for (cell_idx, cell) in mesh_a.cells.iter().enumerate() {
-                // grab a representative vertex on the cell to get the distance
-                let v0 = mesh_a.vertices[mesh_a.edges
-                    [mesh_a.faces[cell.faces[0]].edges[0]]
-                    .hd_vertex];
-
-                let dist_a = v0.dot(cell.normal);
-                let mut min_dist_b = dist_a;
-                let mut min_vertex_idx = 0;
-                // loop through all the vertices on b
-                for (vertex_idx, v) in mesh_b.vertices.iter().enumerate() {
-                    let dist_b = a
-                        .world_pos_to_body(b.body_pos_to_world(*v))
-                        .dot(cell.normal);
-                    if dist_b < min_dist_b {
-                        min_dist_b = dist_b;
-                        min_vertex_idx = vertex_idx;
-                    }
-                }
-
-                if min_dist_b < dist_a {
-                    // Intersection along this axis
-                    if dist_a - min_dist_b < min_penetration {
-                        contact =
-                            Some(ContactData::VertexCell(VertexCellContact {
-                                side,
-                                vertex_idx: min_vertex_idx,
-                                cell_idx,
-                                normal: a.body_vec_to_world(cell.normal),
-                            }));
-                        min_penetration = dist_a - min_dist_b;
-                    }
-                } else {
-                    // Found a separating axis!
-                    return true;
-                }
-            }
-            false
-        };
-
-    // Check all the surface normals of a's cells
-    if check_vertex_cell(a, mesh_a, b, mesh_b, true) {
-        return None;
-    }
-
-    // Check all the surface normals of b's cells
-    if check_vertex_cell(b, mesh_b, a, mesh_a, false) {
-        return None;
-    }
-
-    // Check for edge-face intersections
-    if check_edge_faces(
-        a,
-        mesh_a,
-        b,
-        mesh_b,
-        false,
-        &mut min_penetration,
-        &mut contact,
-    ) {
-        return None;
-    }
-
-    if check_edge_faces(
-        b,
-        mesh_b,
-        a,
-        mesh_a,
-        true,
-        &mut min_penetration,
-        &mut contact,
-    ) {
-        return None;
-    }
-
-    contact
+#[derive(Copy, Clone, Debug)]
+enum ContactAxis {
+    VertexCell {
+        side: bool,
+        cell_idx: usize,
+    },
+    EdgeFace {
+        side: bool,
+        edge_idx: usize,
+        face_idx: usize,
+    },
 }
 
-fn check_edge_faces(
-    a: &Body,
-    mesh_a: &Mesh,
-    b: &Body,
-    mesh_b: &Mesh,
-    side: bool,
-    min_penetration: &mut f32,
-    contact: &mut Option<ContactData>,
-) -> bool {
-    for edge in mesh_a.edges.iter() {
-        // grab a representative vertex on the edge
-        let v0 = mesh_a.vertices[edge.hd_vertex];
-        // grab the edge vector
-        let u = mesh_a.vertices[edge.tl_vertex] - v0;
+#[derive(Debug)]
+enum AxisResult {
+    Intersection {
+        penetration: f32,
+        contact: ContactData,
+    },
+    NotValidAxis,
+    LargerPenetration,
+    NoIntersection,
+}
 
-        let edge_cells: Vec<_> = {
-            let mut cells = Vec::new();
-            if let Some(face_idx) = edge.faces.first() {
-                let face = &mesh_a.faces[*face_idx];
-                cells.push(face.hd_cell);
-                cells.push(face.tl_cell);
+pub struct CollisionDetection {
+    sat_cache: lru::LruCache<(ObjectKey, ObjectKey), ContactAxis>,
+}
 
-                for face_idx in edge.faces.iter().skip(1) {
-                    let face = &mesh_a.faces[*face_idx];
-                    if !cells.contains(&face.hd_cell) {
-                        cells.push(face.hd_cell);
-                    } else if !cells.contains(&face.tl_cell) {
-                        cells.push(face.tl_cell);
+impl CollisionDetection {
+    pub fn new() -> Self {
+        Self {
+            sat_cache: lru::LruCache::new(1000),
+        }
+    }
+
+    pub fn detect_collisions(
+        &mut self,
+        key: (ObjectKey, ObjectKey),
+        a: &Body,
+        b: &Body,
+    ) -> Option<CollisionManifold> {
+        match (&a.collider, &b.collider) {
+            (Collider::HalfSpace { normal }, Collider::Mesh { mesh }) => {
+                let plane_distance = a.pos.dot(*normal);
+                let mut max_depth = 0.0;
+
+                let contacts: Vec<_> = mesh
+                    .vertices
+                    .iter()
+                    .filter_map(|position| {
+                        let pos = b.body_pos_to_world(*position);
+
+                        let distance = pos.dot(*normal);
+
+                        let depth = plane_distance - distance;
+                        if depth > 0.0 {
+                            if depth > max_depth {
+                                max_depth = depth;
+                            }
+                            Some(pos)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+
+                if contacts.len() > 0 {
+                    Some(CollisionManifold {
+                        normal: *normal,
+                        depth: max_depth,
+                        contacts,
+                    })
+                } else {
+                    None
+                }
+            }
+            (Collider::Mesh { .. }, Collider::HalfSpace { .. }) => {
+                // Just call this again with the arguments swapped
+                self.detect_collisions((key.1, key.0), b, a)
+            }
+            (
+                Collider::Mesh { mesh: mesh_a },
+                Collider::Mesh { mesh: mesh_b },
+            ) => {
+                let a = MeshRef {
+                    body: a,
+                    mesh: mesh_a,
+                };
+                let b = MeshRef {
+                    body: b,
+                    mesh: mesh_b,
+                };
+                if let Some(contact) = self.mesh_sat(key, a, b) {
+                    // dbg!(&contact);
+                    return Some(match contact {
+                        ContactData::VertexCell(contact) => {
+                            resolve_vertex_cell_contact(a, b, contact)
+                        }
+                        ContactData::EdgeFace(contact) => {
+                            resolve_edge_face_contact(a, b, contact)
+                        }
+                    });
+                }
+                None
+            }
+            _ => None,
+        }
+    }
+
+    fn mesh_sat(
+        &mut self,
+        key: (ObjectKey, ObjectKey),
+        a: MeshRef,
+        b: MeshRef,
+    ) -> Option<ContactData> {
+        // Bounding hypersphere check
+        if (a.body.pos - b.body.pos).magnitude2()
+            > (a.mesh.radius + b.mesh.radius).powi(2)
+        {
+            return None;
+        }
+
+        let mut min_penetration = std::f32::INFINITY;
+        let mut curr_contact = None;
+
+        let mut edge_cells_cache = None;
+
+        if let Some(axis) = self.sat_cache.get(&key) {
+            match Self::check_axis(
+                a,
+                b,
+                *axis,
+                min_penetration,
+                &mut edge_cells_cache,
+            ) {
+                AxisResult::Intersection {
+                    penetration,
+                    contact,
+                } => {
+                    min_penetration = penetration;
+                    curr_contact = Some(contact);
+                }
+                AxisResult::NoIntersection => {
+                    return None;
+                }
+                _ => (),
+            };
+            // If we got here then the cache entry is no longer useful.
+            self.sat_cache.pop(&key);
+        }
+
+        macro_rules! axis_check {
+            ($axis: expr) => {
+                match Self::check_axis(
+                    a,
+                    b,
+                    $axis,
+                    min_penetration,
+                    &mut edge_cells_cache,
+                ) {
+                    AxisResult::Intersection {
+                        penetration,
+                        contact,
+                    } => {
+                        min_penetration = penetration;
+                        curr_contact = Some(contact);
                     }
+                    AxisResult::NoIntersection => {
+                        self.sat_cache.put(key, $axis);
+                        return None;
+                    }
+                    _ => (),
                 }
+            };
+        }
+
+        for cell_idx in 0..a.mesh.cells.len() {
+            let axis = ContactAxis::VertexCell {
+                side: true,
+                cell_idx,
+            };
+            axis_check!(axis);
+        }
+
+        for cell_idx in 0..b.mesh.cells.len() {
+            let axis = ContactAxis::VertexCell {
+                side: false,
+                cell_idx,
+            };
+            axis_check!(axis);
+        }
+
+        for edge_idx in 0..a.mesh.edges.len() {
+            edge_cells_cache = None;
+            for face_idx in 0..b.mesh.faces.len() {
+                let axis = ContactAxis::EdgeFace {
+                    side: false,
+                    edge_idx,
+                    face_idx,
+                };
+                axis_check!(axis);
             }
-            cells.into_iter().map(|i| mesh_a.cells[i].normal).collect()
-        };
+        }
 
-        // loop through all the faces on b
-        for face in mesh_b.faces.iter() {
-            let c0 = a.world_vec_to_body(
-                b.body_vec_to_world(mesh_b.cells[face.hd_cell].normal),
-            );
-            let c1 = a.world_vec_to_body(
-                b.body_vec_to_world(mesh_b.cells[face.tl_cell].normal),
-            );
-            if !minkowski_edge_face_check(&edge_cells, (-c0, -c1)) {
-                continue;
+        for edge_idx in 0..b.mesh.edges.len() {
+            edge_cells_cache = None;
+            for face_idx in 0..a.mesh.faces.len() {
+                let axis = ContactAxis::EdgeFace {
+                    side: true,
+                    edge_idx,
+                    face_idx,
+                };
+                axis_check!(axis);
             }
+        }
 
-            // grab two edges on the face. Because of the way the face
-            // was generated, these edges are guaranteed to be
-            // non-parallel.
-            let (e0, e1) =
-                (&mesh_b.edges[face.edges[0]], &mesh_b.edges[face.edges[1]]);
-            // grab edge vectors
-            let v = a.world_vec_to_body(b.body_vec_to_world(
-                mesh_b.vertices[e0.tl_vertex] - mesh_b.vertices[e0.hd_vertex],
-            ));
-            let w = a.world_vec_to_body(b.body_vec_to_world(
-                mesh_b.vertices[e1.tl_vertex] - mesh_b.vertices[e1.hd_vertex],
-            ));
+        curr_contact
+    }
 
-            // grab a vector on the face also
-            let v1 = a.world_pos_to_body(
-                b.body_pos_to_world(mesh_b.vertices[e0.hd_vertex]),
-            );
-
-            // grab the normal vector adjacent to all
-            let mut n = crate::alg::triple_cross_product(u, v, w).normalize();
-            if !n.is_finite() {
-                continue;
+    fn check_axis(
+        a: MeshRef,
+        b: MeshRef,
+        axis: ContactAxis,
+        min_penetration: f32,
+        edge_cells_ref: &mut Option<Vec<Vector4<f32>>>,
+    ) -> AxisResult {
+        match axis {
+            ContactAxis::VertexCell { cell_idx, side } => {
+                let (a, b) = if side { (a, b) } else { (b, a) };
+                Self::check_vertex_cell(a, b, cell_idx, side, min_penetration)
             }
-            // ensure that n points from a to b
-            let mut dist_a = n.dot(v0);
-            if dist_a < 0.0 {
-                n = -n;
-                dist_a = -dist_a;
-            }
-
-            let dist_b = n.dot(v1);
-
-            if dist_b < dist_a {
-                // Intersection along this axis
-                if dist_a - dist_b < *min_penetration {
-                    *contact = Some(ContactData::EdgeFace(EdgeFaceContact {
-                        side,
-                        k: a.body_pos_to_world(v0),
-                        t: a.body_vec_to_world(u),
-                        s: b.body_pos_to_world(mesh_b.vertices[e0.hd_vertex]),
-                        u: a.body_vec_to_world(v),
-                        v: a.body_vec_to_world(w),
-                        normal: a.body_vec_to_world(n),
-                    }));
-                    *min_penetration = dist_a - dist_b;
-                }
-            } else {
-                return true;
+            ContactAxis::EdgeFace {
+                edge_idx,
+                face_idx,
+                side,
+            } => {
+                let (a, b) = if side { (b, a) } else { (a, b) };
+                Self::check_edge_face(
+                    a,
+                    b,
+                    edge_idx,
+                    face_idx,
+                    side,
+                    min_penetration,
+                    edge_cells_ref,
+                )
             }
         }
     }
-    return false;
+
+    fn check_edge_face(
+        a: MeshRef,
+        b: MeshRef,
+        edge_idx: usize,
+        face_idx: usize,
+        side: bool,
+        min_penetration: f32,
+        edge_cells_ref: &mut Option<Vec<Vector4<f32>>>,
+    ) -> AxisResult {
+        let edge = &a.mesh.edges[edge_idx];
+        let face = &b.mesh.faces[face_idx];
+
+        let edge_cells = match edge_cells_ref {
+            Some(cs) => cs,
+            None => {
+                let mut cells = Vec::new();
+                if let Some(face_idx) = edge.faces.first() {
+                    let face = &a.mesh.faces[*face_idx];
+                    cells.push(face.hd_cell);
+                    cells.push(face.tl_cell);
+
+                    for face_idx in edge.faces.iter().skip(1) {
+                        let face = &a.mesh.faces[*face_idx];
+                        if !cells.contains(&face.hd_cell) {
+                            cells.push(face.hd_cell);
+                        } else if !cells.contains(&face.tl_cell) {
+                            cells.push(face.tl_cell);
+                        }
+                    }
+                };
+                let edge_cells =
+                    cells.into_iter().map(|i| a.mesh.cells[i].normal).collect();
+                *edge_cells_ref = Some(edge_cells);
+                edge_cells_ref.as_ref().unwrap()
+            }
+        };
+
+        // grab a representative vertex on the edge
+        let v0 = a.mesh.vertices[edge.hd_vertex];
+        // grab the edge vector
+        let u = a.mesh.vertices[edge.tl_vertex] - v0;
+
+        let c0 = a.body.world_vec_to_body(
+            b.body.body_vec_to_world(b.mesh.cells[face.hd_cell].normal),
+        );
+        let c1 = a.body.world_vec_to_body(
+            b.body.body_vec_to_world(b.mesh.cells[face.tl_cell].normal),
+        );
+
+        if !minkowski_edge_face_check(edge_cells, (-c0, -c1)) {
+            return AxisResult::NotValidAxis;
+        }
+
+        // grab two edges on the face. Because of the way the face
+        // was generated, these edges are guaranteed to be
+        // non-parallel.
+        let (e0, e1) =
+            (&b.mesh.edges[face.edges[0]], &b.mesh.edges[face.edges[1]]);
+        // grab edge vectors
+        let v = a.body.world_vec_to_body(b.body.body_vec_to_world(
+            b.mesh.vertices[e0.tl_vertex] - b.mesh.vertices[e0.hd_vertex],
+        ));
+        let w = a.body.world_vec_to_body(b.body.body_vec_to_world(
+            b.mesh.vertices[e1.tl_vertex] - b.mesh.vertices[e1.hd_vertex],
+        ));
+
+        // grab a vector on the face also
+        let v1 = a.body.world_pos_to_body(
+            b.body.body_pos_to_world(b.mesh.vertices[e0.hd_vertex]),
+        );
+
+        // grab the normal vector adjacent to all
+        let mut n = crate::alg::triple_cross_product(u, v, w).normalize();
+        if !n.is_finite() {
+            return AxisResult::NotValidAxis;
+        }
+        // ensure that n points from a to b
+        let mut dist_a = n.dot(v0);
+        if dist_a < 0.0 {
+            n = -n;
+            dist_a = -dist_a;
+        }
+
+        let dist_b = n.dot(v1);
+
+        if dist_b < dist_a {
+            if dist_a - dist_b < min_penetration {
+                // Intersection along this axis
+                AxisResult::Intersection {
+                    penetration: dist_a - dist_b,
+                    contact: ContactData::EdgeFace(EdgeFaceContact {
+                        side,
+                        k: a.body.body_pos_to_world(v0),
+                        t: a.body.body_vec_to_world(u),
+                        s: b.body
+                            .body_pos_to_world(b.mesh.vertices[e0.hd_vertex]),
+                        u: a.body.body_vec_to_world(v),
+                        v: a.body.body_vec_to_world(w),
+                        normal: a.body.body_vec_to_world(n),
+                    }),
+                }
+            } else {
+                AxisResult::LargerPenetration
+            }
+        } else {
+            AxisResult::NoIntersection
+        }
+    }
+
+    fn check_vertex_cell(
+        a: MeshRef,
+        b: MeshRef,
+        cell_idx: usize,
+        side: bool,
+        min_penetration: f32,
+    ) -> AxisResult {
+        let cell = &a.mesh.cells[cell_idx];
+
+        // grab a representative vertex on the cell to get the distance
+        let v0 = a.mesh.vertices
+            [a.mesh.edges[a.mesh.faces[cell.faces[0]].edges[0]].hd_vertex];
+
+        let dist_a = v0.dot(cell.normal);
+        let mut min_dist_b = dist_a;
+        let mut min_vertex_idx = 0;
+        // loop through all the vertices on b
+        for (vertex_idx, v) in b.mesh.vertices.iter().enumerate() {
+            let dist_b = a
+                .body
+                .world_pos_to_body(b.body.body_pos_to_world(*v))
+                .dot(cell.normal);
+            if dist_b < min_dist_b {
+                min_dist_b = dist_b;
+                min_vertex_idx = vertex_idx;
+            }
+        }
+
+        if min_dist_b < dist_a {
+            // Intersection along this axis
+            if dist_a - min_dist_b < min_penetration {
+                AxisResult::Intersection {
+                    penetration: dist_a - min_dist_b,
+                    contact: ContactData::VertexCell(VertexCellContact {
+                        side,
+                        vertex_idx: min_vertex_idx,
+                        cell_idx,
+                        normal: a.body.body_vec_to_world(cell.normal),
+                    }),
+                }
+            } else {
+                AxisResult::LargerPenetration
+            }
+        } else {
+            // Found a separating axis!
+            AxisResult::NoIntersection
+        }
+    }
 }
 
 fn resolve_vertex_cell_contact(
-    a: &Body,
-    mesh_a: &Mesh,
-    b: &Body,
-    mesh_b: &Mesh,
+    a: MeshRef,
+    b: MeshRef,
     contact: VertexCellContact,
 ) -> CollisionManifold {
     if !contact.side {
         // just swap the meshes around in the call
         let mut result = resolve_vertex_cell_contact(
             b,
-            mesh_b,
             a,
-            mesh_a,
             VertexCellContact {
                 side: true,
                 ..contact
@@ -321,15 +484,16 @@ fn resolve_vertex_cell_contact(
         return result;
     }
 
-    let reference_cell = &mesh_a.cells[contact.cell_idx];
+    let reference_cell = &a.mesh.cells[contact.cell_idx];
 
     // Need to determine incident cell - find the cell with the least dot
     // product with the reference normal
     let mut min_dot_product = 1.0;
     let mut incident_cell_idx = 0;
-    for cell_idx in mesh_b.vertex_data[contact.vertex_idx].cells.iter() {
-        let candidate_cell = &mesh_b.cells[*cell_idx];
+    for cell_idx in b.mesh.vertex_data[contact.vertex_idx].cells.iter() {
+        let candidate_cell = &b.mesh.cells[*cell_idx];
         let dot_product = b
+            .body
             .body_vec_to_world(candidate_cell.normal)
             .dot(contact.normal);
         if dot_product < min_dot_product {
@@ -339,23 +503,23 @@ fn resolve_vertex_cell_contact(
     }
 
     // clip the incident cell against the adjacent cells of the reference cell
-    let mut clipper = ClipMesh::from_cell(mesh_b, incident_cell_idx);
+    let mut clipper = ClipMesh::from_cell(b.mesh, incident_cell_idx);
     let mut v0 = Vector4::zero();
     for face_idx in reference_cell.faces.iter() {
-        let face = &mesh_a.faces[*face_idx];
+        let face = &a.mesh.faces[*face_idx];
         // grab a representative vertex
-        v0 = mesh_a.vertices[mesh_a.edges[face.edges[0]].hd_vertex];
+        v0 = a.mesh.vertices[a.mesh.edges[face.edges[0]].hd_vertex];
 
         let cell_idx = if face.hd_cell == contact.cell_idx {
             face.tl_cell
         } else {
             face.hd_cell
         };
-        let clip_normal = b.world_vec_to_body(
-            a.body_vec_to_world(-mesh_a.cells[cell_idx].normal),
+        let clip_normal = b.body.world_vec_to_body(
+            a.body.body_vec_to_world(-a.mesh.cells[cell_idx].normal),
         );
-        let clip_distance =
-            clip_normal.dot(b.world_pos_to_body(a.body_pos_to_world(v0)));
+        let clip_distance = clip_normal
+            .dot(b.body.world_pos_to_body(a.body.body_pos_to_world(v0)));
 
         clipper.clip_by(clip_normal, clip_distance);
     }
@@ -367,8 +531,8 @@ fn resolve_vertex_cell_contact(
         .to_vertices()
         .into_iter()
         .filter_map(|b_vec| {
-            let world_vec = b.body_pos_to_world(b_vec);
-            let a_vec = a.world_pos_to_body(world_vec);
+            let world_vec = b.body.body_pos_to_world(b_vec);
+            let a_vec = a.body.world_pos_to_body(world_vec);
 
             let dist = a_vec.dot(reference_cell.normal);
             if dist < reference_dist {
@@ -381,26 +545,22 @@ fn resolve_vertex_cell_contact(
         .collect();
 
     CollisionManifold {
-        normal: a.body_vec_to_world(reference_cell.normal),
+        normal: a.body.body_vec_to_world(reference_cell.normal),
         depth: max_depth,
         contacts,
     }
 }
 
 fn resolve_edge_face_contact(
-    a: &Body,
-    mesh_a: &Mesh,
-    b: &Body,
-    mesh_b: &Mesh,
+    a: MeshRef,
+    b: MeshRef,
     contact: EdgeFaceContact,
 ) -> CollisionManifold {
     if contact.side {
         // just swap the meshes around in the call
         let mut result = resolve_edge_face_contact(
             b,
-            mesh_b,
             a,
-            mesh_a,
             EdgeFaceContact {
                 side: false,
                 ..contact
@@ -514,6 +674,7 @@ mod tests {
 
     #[test]
     pub fn edge_edge_separation() {
+        /*
         let tess = Mesh::from_schlafli_symbol(&[4, 3, 3]);
 
         let tess_a = Body {
@@ -550,5 +711,6 @@ mod tests {
         };
 
         dbg!(detect_collisions(&tess_a, &tess_b));
+        */
     }
 }

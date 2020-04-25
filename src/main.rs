@@ -73,7 +73,7 @@ impl Application for TestApp {
             &floor_mesh.vertices,
             &floor_mesh.indices,
         );
-        world.objects.push(Object {
+        world.objects.insert(Object {
             body: Body {
                 mass: 0.0,
                 moment_inertia_scalar: 0.0,
@@ -90,7 +90,7 @@ impl Application for TestApp {
         });
 
         // side walls
-        world.objects.push(Object {
+        world.objects.insert(Object {
             body: Body {
                 mass: 0.0,
                 moment_inertia_scalar: 0.0,
@@ -105,7 +105,7 @@ impl Application for TestApp {
             },
             mesh_binding: None,
         });
-        world.objects.push(Object {
+        world.objects.insert(Object {
             body: Body {
                 mass: 0.0,
                 moment_inertia_scalar: 0.0,
@@ -120,7 +120,7 @@ impl Application for TestApp {
             },
             mesh_binding: None,
         });
-        world.objects.push(Object {
+        world.objects.insert(Object {
             body: Body {
                 mass: 0.0,
                 moment_inertia_scalar: 0.0,
@@ -135,7 +135,7 @@ impl Application for TestApp {
             },
             mesh_binding: None,
         });
-        world.objects.push(Object {
+        world.objects.insert(Object {
             body: Body {
                 mass: 0.0,
                 moment_inertia_scalar: 0.0,
@@ -150,7 +150,7 @@ impl Application for TestApp {
             },
             mesh_binding: None,
         });
-        world.objects.push(Object {
+        world.objects.insert(Object {
             body: Body {
                 mass: 0.0,
                 moment_inertia_scalar: 0.0,
@@ -165,7 +165,7 @@ impl Application for TestApp {
             },
             mesh_binding: None,
         });
-        world.objects.push(Object {
+        world.objects.insert(Object {
             body: Body {
                 mass: 0.0,
                 moment_inertia_scalar: 0.0,
@@ -206,7 +206,7 @@ impl Application for TestApp {
             &tetrahedralized_mesh.vertices,
             &tetrahedralized_mesh.indices,
         );
-        world.objects.push(Object {
+        world.objects.insert(Object {
             body: Body {
                 mass: 1.0,
                 moment_inertia_scalar: 1.0 / 6.0,
@@ -245,7 +245,7 @@ impl Application for TestApp {
             &tetrahedralized_mesh.vertices,
             &tetrahedralized_mesh.indices,
         );
-        world.objects.push(Object {
+        world.objects.insert(Object {
             body: Body {
                 mass: 1.0,
                 moment_inertia_scalar: 1.0 / 6.0,
@@ -376,7 +376,7 @@ impl Application for TestApp {
                     &tetrahedralized_mesh.vertices,
                     &tetrahedralized_mesh.indices,
                 );
-                self.world.objects.push(Object {
+                self.world.objects.insert(Object {
                     body: Body {
                         mass: 1.0,
                         moment_inertia_scalar: 1.0 / 6.0,
@@ -401,6 +401,7 @@ impl Application for TestApp {
                 });
             }
 
+            /*
             let vel = &mut self.world.objects[7].body.vel;
             if ui.button(im_str!("Bounce"), [0.0, 0.0]) {
                 vel.linear.x += rand::random::<f32>() * 20.0 - 10.0;
@@ -436,6 +437,7 @@ impl Application for TestApp {
                 .build(ui, &mut vel.angular.yw);
             Slider::new(im_str!("zw"), -10.0..=10.0)
                 .build(ui, &mut vel.angular.zw);
+                */
         });
 
         let mut encoder = graphics_ctx.device.create_command_encoder(
