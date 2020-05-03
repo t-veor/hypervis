@@ -21,9 +21,9 @@ pub struct CollisionManifold {
 }
 
 #[derive(Copy, Clone)]
-struct MeshRef<'a> {
-    body: &'a Body,
-    mesh: &'a Mesh,
+pub struct MeshRef<'a> {
+    pub body: &'a Body,
+    pub mesh: &'a Mesh,
 }
 
 #[derive(Debug)]
@@ -232,6 +232,12 @@ impl CollisionDetection {
             axis_check!(axis);
         }
 
+        // I'm not fully convinced that we need proper edge-face collision
+        // detection. In the case that the SAT algorithm overestimates because
+        // it does not consider an edge-face, the contact pruning algorithm
+        // should prune the contact down to nothing. Additionally, edge-face
+        // collision detection is _really_ slow...
+        /*
         for edge_idx in 0..a.mesh.edges.len() {
             edge_cells_cache = None;
             for face_idx in 0..b.mesh.faces.len() {
@@ -255,6 +261,7 @@ impl CollisionDetection {
                 axis_check!(axis);
             }
         }
+        */
 
         curr_contact
     }
