@@ -27,7 +27,6 @@ struct TestApp {
     view_proj: ViewProjection,
     world: World,
     frames: usize,
-    step_requested: bool,
     steps: usize,
 }
 
@@ -181,84 +180,6 @@ impl Application for TestApp {
             mesh_binding: None,
         });
 
-        let mesh = mesh::Mesh::from_schlafli_symbol(&[4, 3, 3]);
-        let tetrahedralized_mesh =
-            mesh::TetrahedronMesh::from_mesh(&mesh, |normal| {
-                use hsl::HSL;
-                let (r, g, b) = HSL {
-                    h: 180.0
-                        * (normal.z as f64 + rand::random::<f64>() * 5.0 - 2.5)
-                        % 360.0
-                        + 360.0,
-                    s: 0.85,
-                    l: 0.5 + rand::random::<f64>() * 0.1,
-                }
-                .to_rgb();
-                Vector4::new(
-                    r as f32 / 255.0,
-                    g as f32 / 255.0,
-                    b as f32 / 255.0,
-                    1.0,
-                )
-            });
-        let mesh_binding = slice_pipeline.create_mesh_binding(
-            &ctx.graphics_ctx,
-            &tetrahedralized_mesh.vertices,
-            &tetrahedralized_mesh.indices,
-        );
-        world.objects.insert(Object {
-            body: Body {
-                mass: 1.0,
-                moment_inertia_scalar: 1.0 / 6.0,
-                material: Material { restitution: 0.2 },
-                stationary: false,
-                pos: Vector4::new(0.0, 1.5, 0.0, 0.0),
-                rotation: alg::Rotor4::identity(),
-                vel: Velocity::zero(),
-                collider: Collider::Mesh { mesh },
-            },
-            mesh_binding: Some(mesh_binding),
-        });
-
-        let mesh = mesh::Mesh::from_schlafli_symbol(&[4, 3, 3]);
-        let tetrahedralized_mesh =
-            mesh::TetrahedronMesh::from_mesh(&mesh, |normal| {
-                use hsl::HSL;
-                let (r, g, b) = HSL {
-                    h: 180.0
-                        * (normal.z as f64 + rand::random::<f64>() * 5.0 - 2.5)
-                        % 360.0
-                        + 360.0,
-                    s: 0.85,
-                    l: 0.5 + rand::random::<f64>() * 0.1,
-                }
-                .to_rgb();
-                Vector4::new(
-                    r as f32 / 255.0,
-                    g as f32 / 255.0,
-                    b as f32 / 255.0,
-                    1.0,
-                )
-            });
-        let mesh_binding = slice_pipeline.create_mesh_binding(
-            &ctx.graphics_ctx,
-            &tetrahedralized_mesh.vertices,
-            &tetrahedralized_mesh.indices,
-        );
-        world.objects.insert(Object {
-            body: Body {
-                mass: 1.0,
-                moment_inertia_scalar: 1.0 / 6.0,
-                material: Material { restitution: 0.2 },
-                stationary: false,
-                pos: Vector4::new(0.0, 0.5, 0.0, 0.0),
-                rotation: alg::Rotor4::identity(),
-                vel: Velocity::zero(),
-                collider: Collider::Mesh { mesh },
-            },
-            mesh_binding: Some(mesh_binding),
-        });
-
         let view_proj = ViewProjection::new(
             ctx,
             90.0,
@@ -285,7 +206,6 @@ impl Application for TestApp {
             view_proj,
             world,
             frames: 0,
-            step_requested: false,
             steps: 0,
         }
     }
@@ -318,13 +238,8 @@ impl Application for TestApp {
 
     fn update(&mut self, _ctx: &mut Ctx) {
         let dt = 1f32 / 60f32;
-        if true {
-            self.world.update(dt);
-            self.step_requested = false;
-            self.steps += 1;
-        }
-
-        // self.slice_plane.base_point.w = self.world.objects[7].body.pos.w;
+        self.world.update(dt);
+        self.steps += 1;
     }
 
     fn render<'ui>(
@@ -344,10 +259,6 @@ impl Application for TestApp {
         });
 
         Window::new(im_str!("tesseract control")).build(ui, || {
-            if ui.button(im_str!("Step"), [0.0, 0.0]) {
-                self.step_requested = true;
-            }
-
             if ui.button(im_str!("Spawn a tesseract"), [0.0, 0.0]) {
                 let mesh = mesh::Mesh::from_schlafli_symbol(&[4, 3, 3]);
                 let tetrahedralized_mesh =
@@ -387,12 +298,12 @@ impl Application for TestApp {
                         vel: Velocity {
                             linear: Vector4::zero(),
                             angular: alg::Bivec4::new(
-                                rand::random::<f32>() * 5.0 - 2.5,
-                                rand::random::<f32>() * 5.0 - 2.5,
-                                rand::random::<f32>() * 5.0 - 2.5,
-                                rand::random::<f32>() * 5.0 - 2.5,
-                                rand::random::<f32>() * 5.0 - 2.5,
-                                rand::random::<f32>() * 5.0 - 2.5,
+                                rand::random::<f32>() * 2.0 - 1.0,
+                                rand::random::<f32>() * 2.0 - 1.0,
+                                rand::random::<f32>() * 2.0 - 1.0,
+                                rand::random::<f32>() * 2.0 - 1.0,
+                                rand::random::<f32>() * 2.0 - 1.0,
+                                rand::random::<f32>() * 2.0 - 1.0,
                             ),
                         },
                         collider: Collider::Mesh { mesh },
@@ -400,44 +311,6 @@ impl Application for TestApp {
                     mesh_binding: Some(mesh_binding),
                 });
             }
-
-            /*
-            let vel = &mut self.world.objects[7].body.vel;
-            if ui.button(im_str!("Bounce"), [0.0, 0.0]) {
-                vel.linear.x += rand::random::<f32>() * 20.0 - 10.0;
-                vel.linear.y += rand::random::<f32>() * 10.0 + 5.0;
-                vel.linear.z += rand::random::<f32>() * 20.0 - 10.0;
-                vel.linear.w += rand::random::<f32>() * 20.0 - 10.0;
-                vel.angular.xy += rand::random::<f32>() * 20.0 - 10.0;
-                vel.angular.xz += rand::random::<f32>() * 20.0 - 10.0;
-                vel.angular.xw += rand::random::<f32>() * 20.0 - 10.0;
-                vel.angular.yz += rand::random::<f32>() * 20.0 - 10.0;
-                vel.angular.yw += rand::random::<f32>() * 20.0 - 10.0;
-                vel.angular.zw += rand::random::<f32>() * 20.0 - 10.0;
-            }
-            ui.text("velocity");
-            Slider::new(im_str!("x"), -10.0..=10.0)
-                .build(ui, &mut vel.linear.x);
-            Slider::new(im_str!("y"), -10.0..=10.0)
-                .build(ui, &mut vel.linear.y);
-            Slider::new(im_str!("z"), -10.0..=10.0)
-                .build(ui, &mut vel.linear.z);
-            Slider::new(im_str!("w"), -10.0..=10.0)
-                .build(ui, &mut vel.linear.w);
-            ui.text("angular velocity");
-            Slider::new(im_str!("xy"), -10.0..=10.0)
-                .build(ui, &mut vel.angular.xy);
-            Slider::new(im_str!("xz"), -10.0..=10.0)
-                .build(ui, &mut vel.angular.xz);
-            Slider::new(im_str!("xw"), -10.0..=10.0)
-                .build(ui, &mut vel.angular.xw);
-            Slider::new(im_str!("yz"), -10.0..=10.0)
-                .build(ui, &mut vel.angular.yz);
-            Slider::new(im_str!("yw"), -10.0..=10.0)
-                .build(ui, &mut vel.angular.yw);
-            Slider::new(im_str!("zw"), -10.0..=10.0)
-                .build(ui, &mut vel.angular.zw);
-                */
         });
 
         let mut encoder = graphics_ctx.device.create_command_encoder(

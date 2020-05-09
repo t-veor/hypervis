@@ -57,7 +57,6 @@ impl Ctx {
             &window,
             imgui_winit_support::HiDpiMode::Default,
         );
-        imgui.set_ini_filename(None);
         let imgui_renderer = imgui_wgpu::Renderer::new(
             &mut imgui,
             &graphics_ctx.device,
