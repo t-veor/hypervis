@@ -12,7 +12,6 @@ use winit::event::WindowEvent;
 
 use context::graphics::{
     SlicePipeline, SlicePlane, TriangleListPipeline, ViewProjection,
-    DEPTH_FORMAT,
 };
 use context::{Application, Ctx, GraphicsContext};
 use physics::{Body, Collider, Material, Velocity};
@@ -22,8 +21,8 @@ struct TestApp {
     render_pipeline: TriangleListPipeline,
     slice_pipeline: SlicePipeline,
     slice_plane: SlicePlane,
-    depth_texture: wgpu::Texture,
-    depth_texture_view: wgpu::TextureView,
+    depth_texture: wgpu::TextureView,
+    ms_framebuffer: wgpu::TextureView,
     view_proj: ViewProjection,
     world: World,
     frames: usize,
@@ -188,21 +187,16 @@ impl Application for TestApp {
         );
 
         let depth_texture =
-            ctx.graphics_ctx
-                .device
-                .create_texture(&wgpu::TextureDescriptor {
-                    format: DEPTH_FORMAT,
-                    usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT,
-                    ..ctx.graphics_ctx.sc_desc.to_texture_desc()
-                });
-        let depth_texture_view = depth_texture.create_default_view();
+            render_pipeline.create_ms_depth_texture(&ctx.graphics_ctx);
+        let ms_framebuffer =
+            render_pipeline.create_ms_framebuffer(&ctx.graphics_ctx);
 
         TestApp {
             render_pipeline,
             slice_pipeline,
             slice_plane,
+            ms_framebuffer,
             depth_texture,
-            depth_texture_view,
             view_proj,
             world,
             frames: 0,
@@ -219,15 +213,12 @@ impl Application for TestApp {
             Point3::new(0.0, 1.0, 0.0),
         );
 
-        self.depth_texture =
-            ctx.graphics_ctx
-                .device
-                .create_texture(&wgpu::TextureDescriptor {
-                    format: DEPTH_FORMAT,
-                    usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT,
-                    ..ctx.graphics_ctx.sc_desc.to_texture_desc()
-                });
-        self.depth_texture_view = self.depth_texture.create_default_view();
+        self.depth_texture = self
+            .render_pipeline
+            .create_ms_depth_texture(&ctx.graphics_ctx);
+        self.ms_framebuffer = self
+            .render_pipeline
+            .create_ms_framebuffer(&ctx.graphics_ctx);
     }
 
     fn on_event(&mut self, _ctx: &mut Ctx, event: WindowEvent) {
@@ -340,8 +331,8 @@ impl Application for TestApp {
                 encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     color_attachments: &[
                         wgpu::RenderPassColorAttachmentDescriptor {
-                            attachment: &frame.view,
-                            resolve_target: None,
+                            attachment: &self.ms_framebuffer,
+                            resolve_target: Some(&frame.view),
                             load_op: wgpu::LoadOp::Clear,
                             store_op: wgpu::StoreOp::Store,
                             clear_color: wgpu::Color {
@@ -354,7 +345,7 @@ impl Application for TestApp {
                     ],
                     depth_stencil_attachment: Some(
                         wgpu::RenderPassDepthStencilAttachmentDescriptor {
-                            attachment: &self.depth_texture_view,
+                            attachment: &self.depth_texture,
                             depth_load_op: wgpu::LoadOp::Clear,
                             depth_store_op: wgpu::StoreOp::Store,
                             clear_depth: 1.0,

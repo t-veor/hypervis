@@ -4,6 +4,8 @@ use super::{
 
 use anyhow::{anyhow, Context, Result};
 
+const SAMPLE_COUNT: u32 = 4;
+
 pub struct TriangleListPipeline {
     pipeline: wgpu::RenderPipeline,
     pub view_proj_buffer: wgpu::Buffer,
@@ -103,7 +105,7 @@ impl TriangleListPipeline {
                 }),
                 index_format: wgpu::IndexFormat::Uint16,
                 vertex_buffers: &[Vertex4::desc()],
-                sample_count: 1,
+                sample_count: SAMPLE_COUNT,
                 sample_mask: !0,
                 alpha_to_coverage_enabled: false,
             },
@@ -114,6 +116,54 @@ impl TriangleListPipeline {
             view_proj_buffer,
             uniform_bind_group,
         })
+    }
+
+    pub fn create_ms_framebuffer(
+        &self,
+        ctx: &GraphicsContext,
+    ) -> wgpu::TextureView {
+        let multisampled_texture_extent = wgpu::Extent3d {
+            width: ctx.sc_desc.width,
+            height: ctx.sc_desc.height,
+            depth: 1,
+        };
+        let multisampled_frame_descriptor = &wgpu::TextureDescriptor {
+            size: multisampled_texture_extent,
+            mip_level_count: 1,
+            array_layer_count: 1,
+            sample_count: SAMPLE_COUNT,
+            dimension: wgpu::TextureDimension::D2,
+            format: ctx.sc_desc.format,
+            usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT,
+        };
+
+        ctx.device
+            .create_texture(multisampled_frame_descriptor)
+            .create_default_view()
+    }
+
+    pub fn create_ms_depth_texture(
+        &self,
+        ctx: &GraphicsContext,
+    ) -> wgpu::TextureView {
+        let multisampled_texture_extent = wgpu::Extent3d {
+            width: ctx.sc_desc.width,
+            height: ctx.sc_desc.height,
+            depth: 1,
+        };
+        let multisampled_frame_descriptor = &wgpu::TextureDescriptor {
+            size: multisampled_texture_extent,
+            mip_level_count: 1,
+            array_layer_count: 1,
+            sample_count: SAMPLE_COUNT,
+            dimension: wgpu::TextureDimension::D2,
+            format: DEPTH_FORMAT,
+            usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT,
+        };
+
+        ctx.device
+            .create_texture(multisampled_frame_descriptor)
+            .create_default_view()
     }
 
     pub fn update_view_proj(
