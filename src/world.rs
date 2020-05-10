@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 use crate::context::{
     graphics::{
-        MeshBinding, SlicePipeline, SlicePlane, Transform4,
+        MeshBinding, ShadowPipeline, SlicePipeline, SlicePlane, Transform4,
         TriangleListPipeline,
     },
     GraphicsContext,
@@ -41,6 +41,16 @@ impl Object {
     pub fn render(
         &self,
         pipeline: &TriangleListPipeline,
+        render_pass: &mut wgpu::RenderPass,
+    ) {
+        if let Some(mesh_binding) = &self.mesh_binding {
+            pipeline.render(render_pass, mesh_binding);
+        }
+    }
+
+    pub fn shadow_pass(
+        &self,
+        pipeline: &ShadowPipeline,
         render_pass: &mut wgpu::RenderPass,
     ) {
         if let Some(mesh_binding) = &self.mesh_binding {
@@ -155,6 +165,16 @@ impl World {
     ) {
         for i in self.objects.values() {
             i.render(pipeline, render_pass);
+        }
+    }
+
+    pub fn shadow_pass(
+        &self,
+        pipeline: &ShadowPipeline,
+        render_pass: &mut wgpu::RenderPass,
+    ) {
+        for i in self.objects.values() {
+            i.shadow_pass(pipeline, render_pass);
         }
     }
 }

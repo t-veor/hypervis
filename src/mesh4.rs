@@ -1,5 +1,8 @@
 use crate::context::graphics::Vertex4;
 
+// TODO: this file is only used for generating the floor surface, replace with
+// better system
+
 pub struct Mesh4 {
     pub vertices: Vec<Vertex4>,
     pub indices: Vec<u32>,

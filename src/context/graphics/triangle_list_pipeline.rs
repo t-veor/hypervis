@@ -1,5 +1,5 @@
 use super::{
-    GraphicsContext, MeshBinding, Vertex4, ViewProjection, DEPTH_FORMAT,
+    GraphicsContext, Light, MeshBinding, Vertex3, ViewProjection, DEPTH_FORMAT,
 };
 
 use anyhow::{anyhow, Context, Result};
@@ -13,7 +13,12 @@ pub struct TriangleListPipeline {
 }
 
 impl TriangleListPipeline {
-    pub fn new(ctx: &GraphicsContext) -> Result<Self> {
+    pub fn new(
+        ctx: &GraphicsContext,
+        light_buffer: &wgpu::Buffer,
+        shadow_texture: &wgpu::TextureView,
+        shadow_sampler: &wgpu::Sampler,
+    ) -> Result<Self> {
         let vs_src = include_str!("shaders/shader.vert");
         let fs_src = include_str!("shaders/shader.frag");
 
@@ -42,25 +47,67 @@ impl TriangleListPipeline {
 
         let uniform_bind_group_layout = ctx.device.create_bind_group_layout(
             &wgpu::BindGroupLayoutDescriptor {
-                bindings: &[wgpu::BindGroupLayoutBinding {
-                    binding: 0,
-                    visibility: wgpu::ShaderStage::VERTEX,
-                    ty: wgpu::BindingType::UniformBuffer { dynamic: false },
-                }],
+                bindings: &[
+                    wgpu::BindGroupLayoutBinding {
+                        binding: 0,
+                        visibility: wgpu::ShaderStage::VERTEX,
+                        ty: wgpu::BindingType::UniformBuffer { dynamic: false },
+                    },
+                    wgpu::BindGroupLayoutBinding {
+                        binding: 1,
+                        visibility: wgpu::ShaderStage::FRAGMENT,
+                        ty: wgpu::BindingType::UniformBuffer { dynamic: false },
+                    },
+                    wgpu::BindGroupLayoutBinding {
+                        binding: 2,
+                        visibility: wgpu::ShaderStage::FRAGMENT,
+                        ty: wgpu::BindingType::SampledTexture {
+                            multisampled: false,
+                            dimension: wgpu::TextureViewDimension::D2,
+                        },
+                    },
+                    wgpu::BindGroupLayoutBinding {
+                        binding: 3,
+                        visibility: wgpu::ShaderStage::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler,
+                    },
+                ],
             },
         );
 
         let uniform_bind_group =
             ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
                 layout: &uniform_bind_group_layout,
-                bindings: &[wgpu::Binding {
-                    binding: 0,
-                    resource: wgpu::BindingResource::Buffer {
-                        buffer: &view_proj_buffer,
-                        range: 0..std::mem::size_of::<ViewProjection>()
-                            as wgpu::BufferAddress,
+                bindings: &[
+                    wgpu::Binding {
+                        binding: 0,
+                        resource: wgpu::BindingResource::Buffer {
+                            buffer: &view_proj_buffer,
+                            range: 0..std::mem::size_of::<ViewProjection>()
+                                as wgpu::BufferAddress,
+                        },
                     },
-                }],
+                    wgpu::Binding {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Buffer {
+                            buffer: light_buffer,
+                            range: 0..std::mem::size_of::<Light>()
+                                as wgpu::BufferAddress,
+                        },
+                    },
+                    wgpu::Binding {
+                        binding: 2,
+                        resource: wgpu::BindingResource::TextureView(
+                            shadow_texture,
+                        ),
+                    },
+                    wgpu::Binding {
+                        binding: 3,
+                        resource: wgpu::BindingResource::Sampler(
+                            shadow_sampler,
+                        ),
+                    },
+                ],
             });
 
         let pipeline_layout = ctx.device.create_pipeline_layout(
@@ -104,7 +151,7 @@ impl TriangleListPipeline {
                     stencil_write_mask: 0,
                 }),
                 index_format: wgpu::IndexFormat::Uint16,
-                vertex_buffers: &[Vertex4::desc()],
+                vertex_buffers: &[Vertex3::desc()],
                 sample_count: SAMPLE_COUNT,
                 sample_mask: !0,
                 alpha_to_coverage_enabled: false,

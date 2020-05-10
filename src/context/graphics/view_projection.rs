@@ -1,5 +1,5 @@
 use crate::context::Ctx;
-use cgmath::{prelude::One, Deg, Matrix4, Point3, Vector3};
+use cgmath::{Deg, Matrix4, One, Point3, Vector3};
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -27,7 +27,7 @@ impl ViewProjection {
 
         Self {
             view_proj: opengl_to_wgpu_matrix
-                * cgmath::perspective(Deg(fovy), aspect, 0.1, 1000.0)
+                * cgmath::perspective(Deg(fovy), aspect, 1.0, 100.0)
                 * Matrix4::look_at(look_from, look_at, Vector3::unit_y()),
         }
     }

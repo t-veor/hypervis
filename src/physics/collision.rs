@@ -16,7 +16,6 @@ pub struct CollisionConstraint {
     normal: Vector4<f32>,
     tangents: [Vector4<f32>; 3],
     contacts: Vec<ContactState>,
-    e: f32,
     mu: f32,
 }
 
@@ -123,7 +122,6 @@ impl CollisionConstraint {
             normal,
             tangents,
             contacts,
-            e,
             mu,
         }
     }

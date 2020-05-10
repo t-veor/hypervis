@@ -1,4 +1,4 @@
-use super::{GraphicsContext, SlicePlane, Transform4, Vertex4};
+use super::{GraphicsContext, SlicePlane, Transform4, Vertex3, Vertex4};
 
 use anyhow::{anyhow, Context, Result};
 
@@ -170,7 +170,7 @@ impl SlicePipeline {
 
         // overestimate of how many triangles can be generated
         let dst_vertex_buffer_size =
-            (simplex_count * 12 * std::mem::size_of::<Vertex4>() as u32)
+            (simplex_count * 12 * std::mem::size_of::<Vertex3>() as u32)
                 as wgpu::BufferAddress;
 
         let slice_plane_buffer = ctx

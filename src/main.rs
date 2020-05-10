@@ -11,7 +11,8 @@ use cgmath::{Matrix4, Point3, Vector4, Zero};
 use winit::event::WindowEvent;
 
 use context::graphics::{
-    SlicePipeline, SlicePlane, TriangleListPipeline, ViewProjection,
+    Light, ShadowPipeline, SlicePipeline, SlicePlane, TriangleListPipeline,
+    ViewProjection,
 };
 use context::{Application, Ctx, GraphicsContext};
 use physics::{Body, Collider, Material, Velocity};
@@ -20,7 +21,9 @@ use world::{Object, World};
 struct TestApp {
     render_pipeline: TriangleListPipeline,
     slice_pipeline: SlicePipeline,
+    shadow_pipeline: ShadowPipeline,
     slice_plane: SlicePlane,
+    shadow_texture: wgpu::TextureView,
     depth_texture: wgpu::TextureView,
     ms_framebuffer: wgpu::TextureView,
     view_proj: ViewProjection,
@@ -59,8 +62,25 @@ impl Application for TestApp {
 
         let slice_plane = orthogonal;
 
-        let render_pipeline =
-            TriangleListPipeline::new(&ctx.graphics_ctx).unwrap();
+        let light = Light::new(
+            Point3::new(-4.0, 10.0, -6.0),
+            60.0,
+            Vector4::new(1.0, 1.0, 1.0, 1.0),
+        );
+
+        let shadow_pipeline = ShadowPipeline::new(&ctx.graphics_ctx).unwrap();
+        shadow_pipeline.update_light(&mut ctx.graphics_ctx, &light);
+
+        let shadow_texture = shadow_pipeline.new_texture(&ctx.graphics_ctx);
+        let shadow_sampler = shadow_pipeline.new_sampler(&ctx.graphics_ctx);
+
+        let render_pipeline = TriangleListPipeline::new(
+            &ctx.graphics_ctx,
+            &shadow_pipeline.light_buffer,
+            &shadow_texture,
+            &shadow_sampler,
+        )
+        .unwrap();
         let slice_pipeline = SlicePipeline::new(&ctx.graphics_ctx).unwrap();
 
         let mut world = World::new();
@@ -183,7 +203,7 @@ impl Application for TestApp {
             ctx,
             90.0,
             Point3::new(1.0, 5.0, -5.0),
-            Point3::new(0.0, 1.0, 0.0),
+            Point3::new(0.0, 0.0, 0.0),
         );
 
         let depth_texture =
@@ -194,7 +214,9 @@ impl Application for TestApp {
         TestApp {
             render_pipeline,
             slice_pipeline,
+            shadow_pipeline,
             slice_plane,
+            shadow_texture,
             ms_framebuffer,
             depth_texture,
             view_proj,
@@ -325,6 +347,27 @@ impl Application for TestApp {
         let mut encoder = graphics_ctx.device.create_command_encoder(
             &wgpu::CommandEncoderDescriptor { todo: 0 },
         );
+
+        {
+            let mut shadow_pass =
+                encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    color_attachments: &[],
+                    depth_stencil_attachment: Some(
+                        wgpu::RenderPassDepthStencilAttachmentDescriptor {
+                            attachment: &self.shadow_texture,
+                            depth_load_op: wgpu::LoadOp::Clear,
+                            depth_store_op: wgpu::StoreOp::Store,
+                            stencil_load_op: wgpu::LoadOp::Clear,
+                            stencil_store_op: wgpu::StoreOp::Store,
+                            clear_depth: 1.0,
+                            clear_stencil: 0,
+                        },
+                    ),
+                });
+
+            self.world
+                .shadow_pass(&self.shadow_pipeline, &mut shadow_pass);
+        }
 
         {
             let mut render_pass =

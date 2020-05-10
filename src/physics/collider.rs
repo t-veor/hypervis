@@ -6,7 +6,6 @@ use crate::world::ObjectKey;
 use cgmath::{
     Array, InnerSpace, Matrix3, SquareMatrix, Vector3, Vector4, Zero,
 };
-use smallvec::SmallVec;
 
 #[derive(Clone)]
 pub enum Collider {
@@ -593,7 +592,18 @@ fn resolve_edge_face_contact(
     // dbg!(mat);
     // dbg!(mat.determinant());
     let y = Vector3::new(-(k - s).dot(t), (k - s).dot(u), (k - s).dot(v));
-    let x = mat.invert().unwrap() * y;
+    let x = match mat.invert() {
+        Some(m) => m,
+        None => {
+            // This shouldn't really happen, but as a failsafe let's return an
+            // empty contact
+            return CollisionManifold {
+                normal,
+                depth: 0.0,
+                contacts: Vec::new(),
+            };
+        }
+    } * y;
 
     let p1 = k + x.x * t;
     let p2 = s + x.y * u + x.z * v;
