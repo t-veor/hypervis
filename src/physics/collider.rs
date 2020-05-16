@@ -74,11 +74,13 @@ enum AxisResult {
     },
     NotValidAxis,
     LargerPenetration,
-    NoIntersection,
+    NoIntersection {
+        normal: Vector4<f32>,
+    },
 }
 
 pub struct CollisionDetection {
-    sat_cache: lru::LruCache<(ObjectKey, ObjectKey), ContactAxis>,
+    sat_cache: lru::LruCache<(ObjectKey, ObjectKey), Vector4<f32>>,
 }
 
 impl CollisionDetection {
@@ -181,25 +183,10 @@ impl CollisionDetection {
         let mut edge_cells_cache = None;
 
         if let Some(axis) = self.sat_cache.get(&key) {
-            match Self::check_axis(
-                a,
-                b,
-                *axis,
-                min_penetration,
-                &mut edge_cells_cache,
-            ) {
-                AxisResult::Intersection {
-                    penetration,
-                    contact,
-                } => {
-                    min_penetration = penetration;
-                    curr_contact = Some(contact);
-                }
-                AxisResult::NoIntersection => {
-                    return None;
-                }
-                _ => (),
-            };
+            let axis = *axis;
+            if !self.fast_check_axis(a, b, axis) {
+                return None;
+            }
             // If we got here then the cache entry is no longer useful.
             self.sat_cache.pop(&key);
         }
@@ -220,8 +207,8 @@ impl CollisionDetection {
                         min_penetration = penetration;
                         curr_contact = Some(contact);
                     }
-                    AxisResult::NoIntersection => {
-                        self.sat_cache.put(key, $axis);
+                    AxisResult::NoIntersection { normal } => {
+                        self.sat_cache.put(key, normal);
                         return None;
                     }
                     _ => (),
@@ -270,6 +257,31 @@ impl CollisionDetection {
         }
 
         curr_contact
+    }
+
+    fn axis_span(&self, a: MeshRef, normal: Vector4<f32>) -> (f32, f32) {
+        let mut min = std::f32::NEG_INFINITY;
+        let mut max = std::f32::INFINITY;
+
+        for v in a.mesh.vertices.iter() {
+            let d = a.body.body_pos_to_world(*v).dot(normal);
+            min = min.min(d);
+            max = max.max(d);
+        }
+
+        (min, max)
+    }
+
+    fn fast_check_axis(
+        &self,
+        a: MeshRef,
+        b: MeshRef,
+        normal: Vector4<f32>,
+    ) -> bool {
+        let a_range = self.axis_span(a, normal);
+        let b_range = self.axis_span(b, normal);
+
+        a_range.0 <= b_range.1 && b_range.0 <= a_range.1
     }
 
     fn check_axis(
@@ -408,7 +420,9 @@ impl CollisionDetection {
                 AxisResult::LargerPenetration
             }
         } else {
-            AxisResult::NoIntersection
+            AxisResult::NoIntersection {
+                normal: a.body.body_vec_to_world(n),
+            }
         }
     }
 
@@ -457,7 +471,9 @@ impl CollisionDetection {
             }
         } else {
             // Found a separating axis!
-            AxisResult::NoIntersection
+            AxisResult::NoIntersection {
+                normal: a.body.body_vec_to_world(cell.normal),
+            }
         }
     }
 }
