@@ -7,7 +7,7 @@ mod util;
 mod world;
 
 use anyhow::Result;
-use cgmath::{Matrix4, Point3, Vector4, Zero};
+use cgmath::{InnerSpace, Matrix4, Point3, SquareMatrix, Vector4, Zero};
 use winit::event::WindowEvent;
 
 use context::graphics::{
@@ -16,7 +16,22 @@ use context::graphics::{
 };
 use context::{Application, Ctx, GraphicsContext};
 use physics::{Body, Collider, Material, Velocity};
-use world::{Object, World};
+use world::{Object, ObjectKey, World};
+
+#[derive(Debug)]
+struct ObjectSelection {
+    key: ObjectKey,
+    plane_normal: Vector4<f32>,
+    plane_distance: f32,
+    anchor_offset: Vector4<f32>,
+}
+
+struct KeyStates {
+    up: bool,
+    down: bool,
+    ana: bool,
+    kata: bool,
+}
 
 struct TestApp {
     render_pipeline: TriangleListPipeline,
@@ -30,24 +45,15 @@ struct TestApp {
     world: World,
     frames: usize,
     steps: usize,
+    cursor_ray: (Vector4<f32>, Vector4<f32>),
+    selection: Option<ObjectSelection>,
+    key_states: KeyStates,
 }
 
 const ARENA_SIZE: f32 = 4.0;
 
 impl Application for TestApp {
     fn init(ctx: &mut Ctx) -> Self {
-        let _diagonal = SlicePlane {
-            normal: Vector4::new(0.5, 0.5, 0.5, 0.5),
-            base_point: Vector4::zero(),
-            #[rustfmt::skip]
-            proj_matrix: Matrix4::new(
-                0.5, 0.5, 0.5, 0.0,
-                0.5, -0.5, -0.5, 0.0,
-                -0.5, 0.5, -0.5, 0.0,
-                -0.5, -0.5, 0.5, 0.0,
-            ),
-        };
-
         let orthogonal = SlicePlane {
             normal: Vector4::new(0.0, 0.0, 0.0, 1.0),
             base_point: Vector4::new(0.0, 0.0, 0.0, 0.0),
@@ -56,7 +62,7 @@ impl Application for TestApp {
                 1.0, 0.0, 0.0, 0.0,
                 0.0, 1.0, 0.0, 0.0,
                 0.0, 0.0, 1.0, 0.0,
-                0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0, 0.0, 1.0,
             ),
         };
 
@@ -223,6 +229,14 @@ impl Application for TestApp {
             world,
             frames: 0,
             steps: 0,
+            cursor_ray: (Vector4::zero(), Vector4::unit_z()),
+            selection: None,
+            key_states: KeyStates {
+                up: false,
+                down: false,
+                ana: false,
+                kata: false,
+            },
         }
     }
 
@@ -243,14 +257,143 @@ impl Application for TestApp {
             .create_ms_framebuffer(&ctx.graphics_ctx);
     }
 
-    fn on_event(&mut self, _ctx: &mut Ctx, event: WindowEvent) {
+    fn on_event(&mut self, ctx: &mut Ctx, event: WindowEvent) {
         match event {
+            WindowEvent::CursorMoved { position, .. } => {
+                let size = ctx.window.inner_size();
+                let (x, y) = (
+                    position.x as f32 / size.width as f32 * 2.0 - 1.0,
+                    position.y as f32 / size.height as f32 * 2.0 - 1.0,
+                );
+
+                let mut v0 = self
+                    .view_proj
+                    .screen_to_world(Vector4::new(x, y, -1.0, 1.0));
+                v0 /= v0.w;
+                v0.w = 0.0;
+                v0 = self.slice_plane.proj_matrix.invert().unwrap() * v0
+                    + self.slice_plane.base_point;
+
+                let mut v1 = self
+                    .view_proj
+                    .screen_to_world(Vector4::new(x, y, 1.0, 1.0));
+                v1 /= v1.w;
+                v1.w = 0.0;
+                v1 = self.slice_plane.proj_matrix.invert().unwrap() * v1
+                    + self.slice_plane.base_point;
+
+                self.cursor_ray = (v0, (v1 - v0).normalize());
+            }
+            WindowEvent::MouseInput {
+                state: winit::event::ElementState::Pressed,
+                button: winit::event::MouseButton::Left,
+                ..
+            } => {
+                let mut min_lambda = std::f32::INFINITY;
+                let mut selection = None;
+                for (key, object) in self.world.objects.iter() {
+                    match object
+                        .body
+                        .ray_intersect(self.cursor_ray.0, self.cursor_ray.1)
+                    {
+                        Some(lambda) => {
+                            if lambda < min_lambda {
+                                selection = Some(key);
+                                min_lambda = lambda;
+                            }
+                        }
+                        None => (),
+                    }
+                }
+
+                match selection {
+                    Some(key) => {
+                        let object = &self.world.objects[key];
+                        let contact_point =
+                            self.cursor_ray.0 + self.cursor_ray.1 * min_lambda;
+                        let plane_normal = Vector4::unit_y();
+                        let plane_distance = object.body.pos.dot(plane_normal);
+                        let anchor_offset =
+                            contact_point - object.body.pos - Vector4::unit_y();
+
+                        self.selection = Some(ObjectSelection {
+                            key,
+                            plane_normal,
+                            plane_distance,
+                            anchor_offset,
+                        });
+                    }
+                    _ => (),
+                }
+            }
+            WindowEvent::MouseInput {
+                state: winit::event::ElementState::Released,
+                button: winit::event::MouseButton::Left,
+                ..
+            } => {
+                self.selection = None;
+            }
+            WindowEvent::KeyboardInput {
+                input,
+                is_synthetic: false,
+                ..
+            } => {
+                let pressed =
+                    input.state == winit::event::ElementState::Pressed;
+
+                match input.scancode {
+                    /* W */
+                    17 => self.key_states.up = pressed,
+                    /* S */
+                    31 => self.key_states.down = pressed,
+                    /* A */
+                    30 => self.key_states.ana = pressed,
+                    /* D */
+                    32 => self.key_states.kata = pressed,
+                    _ => (),
+                }
+            }
             _ => (),
         }
     }
 
     fn update(&mut self, _ctx: &mut Ctx) {
         let dt = 1f32 / 60f32;
+
+        if let Some(selection) = &mut self.selection {
+            if let Some(object) = self.world.objects.get_mut(selection.key) {
+                // intersect the current screen ray with the plane
+                let lambda = (selection.plane_distance
+                    - self.cursor_ray.0.dot(selection.plane_normal))
+                    / self.cursor_ray.1.dot(selection.plane_normal);
+                let contact_point =
+                    self.cursor_ray.0 + self.cursor_ray.1 * lambda;
+
+                if self.key_states.up {
+                    selection.anchor_offset -= Vector4::unit_y() * 0.02;
+                }
+                if self.key_states.down {
+                    selection.anchor_offset += Vector4::unit_y() * 0.02;
+                }
+                if self.key_states.ana {
+                    selection.anchor_offset -= Vector4::unit_w() * 0.02;
+                }
+                if self.key_states.kata {
+                    selection.anchor_offset += Vector4::unit_w() * 0.02;
+                }
+
+                let displacement =
+                    contact_point - selection.anchor_offset - object.body.pos;
+                let spring_constant = 0.5;
+
+                object.body.vel.linear += displacement * spring_constant;
+
+                // damping
+                object.body.vel.linear *= 0.8;
+                object.body.vel.angular = 0.8 * object.body.vel.angular;
+            }
+        }
+
         self.world.update(dt);
         self.steps += 1;
     }
@@ -271,9 +414,13 @@ impl Application for TestApp {
             .build(ui, &mut self.slice_plane.base_point.w);
         });
 
-        Window::new(im_str!("tesseract control")).build(ui, || {
-            if ui.button(im_str!("Spawn a tesseract"), [0.0, 0.0]) {
-                let mesh = mesh::Mesh::from_schlafli_symbol(&[4, 3, 3]);
+        Window::new(im_str!("controls")).build(ui, || {
+            if ui.button(im_str!("Spawn a shape"), [0.0, 0.0]) {
+                let schlafli_symbol =
+                    &[[3, 3, 3], [4, 3, 3], [3, 3, 4], [3, 4, 3]]
+                        [(rand::random::<f32>() * 4.0) as usize];
+
+                let mesh = mesh::Mesh::from_schlafli_symbol(schlafli_symbol);
                 let tetrahedralized_mesh =
                     mesh::TetrahedronMesh::from_mesh(&mesh, |normal| {
                         use hsl::HSL;
@@ -284,8 +431,8 @@ impl Application for TestApp {
                                     - 2.5)
                                 % 360.0
                                 + 360.0,
-                            s: 0.9,
-                            l: 0.6 + rand::random::<f64>() * 0.1,
+                            s: 1.0,
+                            l: 0.5 + rand::random::<f64>() * 0.1,
                         }
                         .to_rgb();
                         Vector4::new(
@@ -324,6 +471,13 @@ impl Application for TestApp {
                     mesh_binding: Some(mesh_binding),
                 });
             }
+
+            ui.text("Press W and S to raise and lower the held object.");
+            ui.text(
+                "Press A and D to move it back and forth in the 4th dimension.",
+            );
+
+            ui.text(format!("Selection: {:#?}", self.selection));
         });
 
         let mut encoder = graphics_ctx.device.create_command_encoder(
@@ -409,5 +563,5 @@ impl Application for TestApp {
 }
 
 fn main() -> Result<()> {
-    context::run::<TestApp>("Hello world!", (800, 600))
+    context::run::<TestApp>("Hello world!", (1280, 720))
 }

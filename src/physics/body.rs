@@ -1,6 +1,6 @@
 use super::Collider;
 use crate::alg::{Bivec4, Rotor4, Vec4};
-use cgmath::{Vector4, Zero};
+use cgmath::{InnerSpace, Vector4, Zero};
 
 #[derive(Debug, Clone)]
 pub struct Material {
@@ -85,6 +85,43 @@ impl Body {
         );
 
         self.vel.linear + rot_vel
+    }
+    pub fn ray_intersect(
+        &self,
+        start: Vector4<f32>,
+        dir: Vector4<f32>,
+    ) -> Option<f32> {
+        let start = self.world_pos_to_body(start);
+        let dir = self.world_vec_to_body(dir);
+
+        match &self.collider {
+            Collider::Mesh { mesh } => {
+                let mut interval = (std::f32::NEG_INFINITY, std::f32::INFINITY);
+
+                for cell in mesh.cells.iter() {
+                    // grab a representative vertex on the cell
+                    let v0 = mesh.vertices[mesh.edges
+                        [mesh.faces[cell.faces[0]].edges[0]]
+                        .hd_vertex];
+
+                    let denom = dir.dot(cell.normal);
+                    let lambda = (v0 - start).dot(cell.normal) / denom;
+
+                    if denom < 0.0 {
+                        interval.0 = interval.0.max(lambda);
+                    } else {
+                        interval.1 = interval.1.min(lambda);
+                    }
+
+                    if interval.1 < interval.0 {
+                        return None;
+                    }
+                }
+
+                Some(interval.0)
+            }
+            _ => None,
+        }
     }
 
     pub fn body_vec_to_world(&self, v: Vector4<f32>) -> Vector4<f32> {

@@ -1,5 +1,5 @@
 use crate::context::Ctx;
-use cgmath::{Deg, Matrix4, One, Point3, Vector3};
+use cgmath::{Deg, Matrix4, One, Point3, SquareMatrix, Vector3, Vector4};
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -30,6 +30,14 @@ impl ViewProjection {
                 * cgmath::perspective(Deg(fovy), aspect, 1.0, 100.0)
                 * Matrix4::look_at(look_from, look_at, Vector3::unit_y()),
         }
+    }
+
+    pub fn world_to_screen(&self, world: Vector4<f32>) -> Vector4<f32> {
+        self.view_proj * world
+    }
+
+    pub fn screen_to_world(&self, screen: Vector4<f32>) -> Vector4<f32> {
+        self.view_proj.invert().unwrap() * screen
     }
 }
 
