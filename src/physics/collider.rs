@@ -11,6 +11,7 @@ use cgmath::{
 pub enum Collider {
     HalfSpace { normal: Vector4<f32> },
     Mesh { mesh: Mesh },
+    Sphere { radius: f32 },
 }
 
 #[derive(Debug)]
@@ -24,6 +25,12 @@ pub struct CollisionManifold {
 pub struct MeshRef<'a> {
     pub body: &'a Body,
     pub mesh: &'a Mesh,
+}
+
+#[derive(Copy, Clone)]
+pub struct SphereRef<'a> {
+    pub body: &'a Body,
+    pub radius: f32,
 }
 
 #[derive(Debug)]

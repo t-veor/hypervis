@@ -1,10 +1,54 @@
 use std::collections::HashMap;
 
-use super::{CollisionManifold, MeshRef};
+use super::{CollisionManifold, MeshRef, SphereRef};
 use crate::alg::triple_cross_product;
 use crate::mesh::Mesh;
 use crate::util::{NotNaN, EPSILON};
 use cgmath::{InnerSpace, Matrix2, SquareMatrix, Vector2, Vector4, Zero};
+
+pub trait Support {
+    fn support(&self, direction: Vector4<f32>) -> Vector4<f32>;
+}
+
+impl<'a> Support for MeshRef<'a> {
+    fn support(&self, direction: Vector4<f32>) -> Vector4<f32> {
+        let body_d = self.body.world_vec_to_body(direction);
+        self.body.body_pos_to_world(
+            *self
+                .mesh
+                .vertices
+                .iter()
+                .max_by_key(|v| NotNaN::new(v.dot(body_d)).unwrap())
+                .unwrap(),
+        )
+    }
+}
+
+impl<'a> Support for SphereRef<'a> {
+    fn support(&self, direction: Vector4<f32>) -> Vector4<f32> {
+        direction.normalize() * self.radius + self.body.pos
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct CSO<A, B>
+where
+    A: Support,
+    B: Support,
+{
+    a: A,
+    b: B,
+}
+
+impl<A, B> Support for CSO<A, B>
+where
+    A: Support,
+    B: Support,
+{
+    fn support(&self, direction: Vector4<f32>) -> Vector4<f32> {
+        self.a.support(direction) - self.b.support(-direction)
+    }
+}
 
 fn support(m: MeshRef, direction: Vector4<f32>) -> Vector4<f32> {
     let body_d = m.body.world_vec_to_body(direction);
@@ -176,17 +220,19 @@ impl Simplex {
     }
 }
 
-fn gjk_intersection(
-    p: MeshRef,
-    q: MeshRef,
+fn gjk_intersection<S>(
+    object: S,
     initial_direction: Vector4<f32>,
-) -> Option<Simplex> {
-    let mut a = support(p, initial_direction) - support(q, -initial_direction);
+) -> Option<Simplex>
+where
+    S: Support,
+{
+    let mut a = object.support(initial_direction);
     let mut s = Simplex::new(a);
     let mut d = -a;
 
     loop {
-        a = support(p, d) - support(q, -d);
+        a = object.support(d);
         if a.dot(d) < 0.0 {
             return None;
         }
@@ -336,7 +382,10 @@ impl ExpandingPolytope {
     }
 }
 
-fn epa(p: MeshRef, q: MeshRef, simplex: Simplex) -> Vector4<f32> {
+fn epa<S>(object: S, simplex: Simplex) -> Vector4<f32>
+where
+    S: Support,
+{
     let mut polytope = ExpandingPolytope::from_simplex(simplex);
 
     loop {
@@ -346,7 +395,7 @@ fn epa(p: MeshRef, q: MeshRef, simplex: Simplex) -> Vector4<f32> {
             .min_by_key(|i| NotNaN::new(i.distance).unwrap())
             .unwrap();
         let normal = min_cell.normal;
-        let extend_point = support(p, normal) - support(q, -normal);
+        let extend_point = object.support(normal);
 
         if extend_point.dot(normal) - min_cell.distance > EPSILON {
             polytope.expand(extend_point);
