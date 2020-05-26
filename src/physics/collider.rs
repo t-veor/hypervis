@@ -138,9 +138,28 @@ impl CollisionDetection {
                     None
                 }
             }
+            (Collider::HalfSpace { normal }, Collider::Sphere { radius }) => {
+                let plane_distance = a.pos.dot(*normal);
+                let sphere_distance = b.pos.dot(*normal);
+
+                let center_distance = sphere_distance - plane_distance;
+                if center_distance < *radius {
+                    Some(CollisionManifold {
+                        normal: *normal,
+                        depth: radius - center_distance,
+                        contacts: vec![b.pos - *radius * normal],
+                    })
+                } else {
+                    None
+                }
+            }
             (Collider::Mesh { .. }, Collider::HalfSpace { .. }) => {
                 // Just call this again with the arguments swapped
-                self.detect_collisions((key.1, key.0), b, a)
+                let mut manifold = self.detect_collisions((key.1, key.0), b, a);
+                if let Some(m) = &mut manifold {
+                    m.normal *= -1.0;
+                }
+                manifold
             }
             (
                 Collider::Mesh { mesh: mesh_a },
@@ -166,6 +185,46 @@ impl CollisionDetection {
                     });
                 }
                 None
+            }
+            (
+                Collider::Mesh { mesh: mesh_a },
+                Collider::Sphere { radius: radius_b },
+            ) => {
+                // TODO
+                None
+            }
+            (Collider::Sphere { .. }, Collider::HalfSpace { .. }) => {
+                // Just call this again with the arguments swapped
+                let mut manifold = self.detect_collisions((key.1, key.0), b, a);
+                if let Some(m) = &mut manifold {
+                    m.normal *= -1.0;
+                }
+                manifold
+            }
+            (Collider::Sphere { .. }, Collider::Mesh { .. }) => {
+                // Just call this again with the arguments swapped
+                let mut manifold = self.detect_collisions((key.1, key.0), b, a);
+                if let Some(m) = &mut manifold {
+                    m.normal *= -1.0;
+                }
+                manifold
+            }
+            (
+                Collider::Sphere { radius: radius_a },
+                Collider::Sphere { radius: radius_b },
+            ) => {
+                let displacement = b.pos - a.pos;
+                let depth = radius_a + radius_b - displacement.magnitude();
+                if depth > 0.0 {
+                    let normal = displacement.normalize();
+                    Some(CollisionManifold {
+                        normal,
+                        depth,
+                        contacts: vec![a.pos + depth * normal],
+                    })
+                } else {
+                    None
+                }
             }
             _ => None,
         }

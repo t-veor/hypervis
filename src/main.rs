@@ -416,34 +416,29 @@ impl Application for TestApp {
 
         Window::new(im_str!("controls")).build(ui, || {
             if ui.button(im_str!("Spawn a shape"), [0.0, 0.0]) {
+                use hsl::HSL;
                 // let schlafli_symbol =
                 //     &[[3, 3, 3], [4, 3, 3], [3, 3, 4], [3, 4, 3]]
                 //         [(rand::random::<f32>() * 4.0) as usize];
                 let schlafli_symbol = &[3, 3, 5];
 
+                let (r, g, b) = HSL {
+                    h: 360.0 * rand::random::<f64>(),
+                    s: 1.0,
+                    l: 0.5 + rand::random::<f64>() * 0.1,
+                }
+                .to_rgb();
+                let color = Vector4::new(
+                    r as f32 / 255.0,
+                    g as f32 / 255.0,
+                    b as f32 / 255.0,
+                    1.0,
+                );
+
                 let mesh = mesh::Mesh::from_schlafli_symbol(schlafli_symbol);
                 let tetrahedralized_mesh =
-                    mesh::TetrahedronMesh::from_mesh(&mesh, |normal| {
-                        use hsl::HSL;
-                        let (r, g, b) = HSL {
-                            h: 180.0
-                                * (normal.z as f64
-                                    + rand::random::<f64>() * 5.0
-                                    - 2.5)
-                                % 360.0
-                                + 360.0,
-                            s: 1.0,
-                            l: 0.5 + rand::random::<f64>() * 0.1,
-                        }
-                        .to_rgb();
-                        Vector4::new(
-                            r as f32 / 255.0,
-                            g as f32 / 255.0,
-                            b as f32 / 255.0,
-                            1.0,
-                        )
-                    })
-                    .make_geodesic(4, 1.0);
+                    mesh::TetrahedronMesh::from_mesh(&mesh, |_| color)
+                        .make_geodesic(4, 1.0);
                 let mesh_binding = self.slice_pipeline.create_mesh_binding(
                     &graphics_ctx,
                     &tetrahedralized_mesh.vertices,
@@ -468,7 +463,7 @@ impl Application for TestApp {
                                 rand::random::<f32>() * 2.0 - 1.0,
                             ),
                         },
-                        collider: Collider::Mesh { mesh },
+                        collider: Collider::Sphere { radius: 1.0 },
                     },
                     mesh_binding: Some(mesh_binding),
                 });
