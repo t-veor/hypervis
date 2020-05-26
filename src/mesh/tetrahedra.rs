@@ -1,7 +1,7 @@
 use super::Mesh;
 use crate::context::graphics::Vertex4;
 
-use cgmath::Vector4;
+use cgmath::{InnerSpace, Vector4};
 use std::collections::HashMap;
 
 #[derive(Debug)]
@@ -99,5 +99,112 @@ impl TetrahedronMesh {
         }
 
         result
+    }
+
+    pub fn subdivide(&self, frequency: usize) -> Self {
+        let mut vertices = Vec::new();
+        let mut indices = Vec::new();
+
+        for tetrahedron in self.indices.chunks_exact(4) {
+            if let &[a, b, c, d] = tetrahedron {
+                let a = self.vertices[a as usize];
+                let b = self.vertices[b as usize];
+                let c = self.vertices[c as usize];
+                let d = self.vertices[d as usize];
+
+                let mut mapped_indices: Vec<(usize, usize, usize)> = Vec::new();
+
+                for n in 0..frequency {
+                    // loop through all the possible vertices on this layer
+                    for i in 0..(n + 1) {
+                        for j in 0..(n - i + 1) {
+                            let k = n - i - j;
+                            // insert a tetrahedron based at this vertex
+                            // x, xi, xj, xk
+                            mapped_indices.extend(&[
+                                (i, j, k),
+                                (i + 1, j, k),
+                                (i, j + 1, k),
+                                (i, j, k + 1),
+                            ]);
+
+                            if n < frequency - 1 {
+                                // insert an octahedron here as well
+                                mapped_indices.extend(&[
+                                    // xi, xj, xk, xik
+                                    (i + 1, j, k),
+                                    (i, j + 1, k),
+                                    (i, j, k + 1),
+                                    (i + 1, j, k + 1),
+                                    // xi, xj, xij, xik
+                                    (i + 1, j, k),
+                                    (i, j + 1, k),
+                                    (i + 1, j + 1, k),
+                                    (i + 1, j, k + 1),
+                                    // xj, xk, xik, xjk
+                                    (i, j + 1, k),
+                                    (i, j, k + 1),
+                                    (i + 1, j, k + 1),
+                                    (i, j + 1, k + 1),
+                                    // xj, xij, xik, xjk
+                                    (i, j + 1, k),
+                                    (i + 1, j + 1, k),
+                                    (i + 1, j, k + 1),
+                                    (i, j + 1, k + 1),
+                                ]);
+                            }
+
+                            if n < frequency - 2 {
+                                mapped_indices.extend(&[
+                                    // xij, xik, xjk, xijk
+                                    (i + 1, j + 1, k),
+                                    (i + 1, j, k + 1),
+                                    (i, j + 1, k + 1),
+                                    (i + 1, j + 1, k + 1),
+                                ]);
+                            }
+                        }
+                    }
+                }
+
+                let mut vertex_map = HashMap::new();
+                for coords in mapped_indices {
+                    let index =
+                        *vertex_map.entry(coords).or_insert_with(|| {
+                            let index = vertices.len();
+
+                            let (i, j, k) = coords;
+                            let s = i as f32 / frequency as f32;
+                            let t = j as f32 / frequency as f32;
+                            let u = k as f32 / frequency as f32;
+                            let r = 1.0 - s - t - u;
+
+                            let position = a.position * r
+                                + b.position * s
+                                + c.position * t
+                                + d.position * u;
+                            let color = a.color * r
+                                + b.color * s
+                                + c.color * t
+                                + d.color * u;
+
+                            vertices.push(Vertex4 { position, color });
+
+                            index
+                        });
+                    indices.push(index as u32);
+                }
+            }
+        }
+
+        Self { vertices, indices }
+    }
+
+    pub fn make_geodesic(&self, frequency: usize, radius: f32) -> Self {
+        let mut mesh = self.subdivide(frequency);
+        mesh.vertices
+            .iter_mut()
+            .for_each(|v| v.position = v.position.normalize() * radius);
+        mesh
     }
 }

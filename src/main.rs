@@ -416,9 +416,10 @@ impl Application for TestApp {
 
         Window::new(im_str!("controls")).build(ui, || {
             if ui.button(im_str!("Spawn a shape"), [0.0, 0.0]) {
-                let schlafli_symbol =
-                    &[[3, 3, 3], [4, 3, 3], [3, 3, 4], [3, 4, 3]]
-                        [(rand::random::<f32>() * 4.0) as usize];
+                // let schlafli_symbol =
+                //     &[[3, 3, 3], [4, 3, 3], [3, 3, 4], [3, 4, 3]]
+                //         [(rand::random::<f32>() * 4.0) as usize];
+                let schlafli_symbol = &[3, 3, 5];
 
                 let mesh = mesh::Mesh::from_schlafli_symbol(schlafli_symbol);
                 let tetrahedralized_mesh =
@@ -441,7 +442,8 @@ impl Application for TestApp {
                             b as f32 / 255.0,
                             1.0,
                         )
-                    });
+                    })
+                    .make_geodesic(4, 1.0);
                 let mesh_binding = self.slice_pipeline.create_mesh_binding(
                     &graphics_ctx,
                     &tetrahedralized_mesh.vertices,
@@ -472,10 +474,8 @@ impl Application for TestApp {
                 });
             }
 
-            ui.text("Press W and S to raise and lower the held object.");
-            ui.text(
-                "Press A and D to move it back and forth in the 4th dimension.",
-            );
+            ui.text("W/S: raise/lower");
+            ui.text("A/D: move in 4th dimension");
 
             ui.text(format!("Selection: {:#?}", self.selection));
         });
