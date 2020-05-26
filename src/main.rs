@@ -16,8 +16,9 @@ use context::graphics::{
     ViewProjection,
 };
 use context::{Application, Ctx, GraphicsContext};
-use physics::{Body, Collider, Material, Velocity};
-use world::{Object, ObjectKey, World};
+use physics::Material;
+use shapes::RegularSolid;
+use world::{ObjectKey, World};
 
 #[derive(Debug)]
 struct DragSelection {
@@ -240,7 +241,7 @@ impl Application for TestApp {
                         let contact_point =
                             self.cursor_ray.0 + self.cursor_ray.1 * min_lambda;
                         let plane_normal = Vector4::unit_y();
-                        let plane_distance = object.body.pos.dot(plane_normal);
+                        let plane_distance = contact_point.dot(plane_normal);
                         let anchor_offset =
                             contact_point - object.body.pos - Vector4::unit_y();
 
@@ -355,7 +356,7 @@ impl Application for TestApp {
             if ui.button(im_str!("Spawn a shape"), [0.0, 0.0]) {
                 self.world.objects.insert(
                     shapes::ShapeBuilder::new()
-                        .sphere(0.5)
+                        .regular_solid(RegularSolid::EightCell)
                         .build(graphics_ctx, &self.slice_pipeline),
                 );
             }
