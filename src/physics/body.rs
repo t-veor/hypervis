@@ -120,6 +120,19 @@ impl Body {
 
                 Some(interval.0)
             }
+            Collider::Sphere { radius } => {
+                // Solve a quadratic equation!
+                let a = dir.magnitude2();
+                let b = 2.0 * start.dot(dir);
+                let c = start.magnitude2() - radius * radius;
+
+                let discriminant = b * b - 4.0 * a * c;
+                if discriminant >= 0.0 {
+                    Some((-b - discriminant.sqrt()) / (2.0 * a))
+                } else {
+                    None
+                }
+            }
             _ => None,
         }
     }

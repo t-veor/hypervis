@@ -3,6 +3,7 @@ mod context;
 mod mesh;
 mod mesh4;
 mod physics;
+mod shapes;
 mod util;
 mod world;
 
@@ -19,7 +20,7 @@ use physics::{Body, Collider, Material, Velocity};
 use world::{Object, ObjectKey, World};
 
 #[derive(Debug)]
-struct ObjectSelection {
+struct DragSelection {
     key: ObjectKey,
     plane_normal: Vector4<f32>,
     plane_distance: f32,
@@ -46,7 +47,8 @@ struct TestApp {
     frames: usize,
     steps: usize,
     cursor_ray: (Vector4<f32>, Vector4<f32>),
-    selection: Option<ObjectSelection>,
+    selection: Option<ObjectKey>,
+    drag_selection: Option<DragSelection>,
     key_states: KeyStates,
 }
 
@@ -91,119 +93,44 @@ impl Application for TestApp {
 
         let mut world = World::new();
 
-        let floor_mesh = mesh4::floor(2.0 * ARENA_SIZE);
-        let floor_mesh_binding = slice_pipeline.create_mesh_binding(
+        world.objects.insert(shapes::create_floor(
             &ctx.graphics_ctx,
-            &floor_mesh.vertices,
-            &floor_mesh.indices,
-        );
-        world.objects.insert(Object {
-            body: Body {
-                mass: 0.0,
-                moment_inertia_scalar: 0.0,
-                material: Material { restitution: 0.4 },
-                stationary: true,
-                pos: Vector4::zero(),
-                rotation: alg::Rotor4::identity(),
-                vel: Velocity::zero(),
-                collider: Collider::HalfSpace {
-                    normal: Vector4::unit_y(),
-                },
-            },
-            mesh_binding: Some(floor_mesh_binding),
-        });
+            &slice_pipeline,
+            2.0 * ARENA_SIZE,
+            Material { restitution: 0.4 },
+        ));
 
         // side walls
-        world.objects.insert(Object {
-            body: Body {
-                mass: 0.0,
-                moment_inertia_scalar: 0.0,
-                material: Material { restitution: 0.4 },
-                stationary: true,
-                pos: -ARENA_SIZE * Vector4::unit_x(),
-                rotation: alg::Rotor4::identity(),
-                vel: Velocity::zero(),
-                collider: Collider::HalfSpace {
-                    normal: Vector4::unit_x(),
-                },
-            },
-            mesh_binding: None,
-        });
-        world.objects.insert(Object {
-            body: Body {
-                mass: 0.0,
-                moment_inertia_scalar: 0.0,
-                material: Material { restitution: 0.4 },
-                stationary: true,
-                pos: ARENA_SIZE * Vector4::unit_x(),
-                rotation: alg::Rotor4::identity(),
-                vel: Velocity::zero(),
-                collider: Collider::HalfSpace {
-                    normal: -Vector4::unit_x(),
-                },
-            },
-            mesh_binding: None,
-        });
-        world.objects.insert(Object {
-            body: Body {
-                mass: 0.0,
-                moment_inertia_scalar: 0.0,
-                material: Material { restitution: 0.4 },
-                stationary: true,
-                pos: -ARENA_SIZE * Vector4::unit_z(),
-                rotation: alg::Rotor4::identity(),
-                vel: Velocity::zero(),
-                collider: Collider::HalfSpace {
-                    normal: Vector4::unit_z(),
-                },
-            },
-            mesh_binding: None,
-        });
-        world.objects.insert(Object {
-            body: Body {
-                mass: 0.0,
-                moment_inertia_scalar: 0.0,
-                material: Material { restitution: 0.4 },
-                stationary: true,
-                pos: ARENA_SIZE * Vector4::unit_z(),
-                rotation: alg::Rotor4::identity(),
-                vel: Velocity::zero(),
-                collider: Collider::HalfSpace {
-                    normal: -Vector4::unit_z(),
-                },
-            },
-            mesh_binding: None,
-        });
-        world.objects.insert(Object {
-            body: Body {
-                mass: 0.0,
-                moment_inertia_scalar: 0.0,
-                material: Material { restitution: 0.4 },
-                stationary: true,
-                pos: -ARENA_SIZE * Vector4::unit_w(),
-                rotation: alg::Rotor4::identity(),
-                vel: Velocity::zero(),
-                collider: Collider::HalfSpace {
-                    normal: Vector4::unit_w(),
-                },
-            },
-            mesh_binding: None,
-        });
-        world.objects.insert(Object {
-            body: Body {
-                mass: 0.0,
-                moment_inertia_scalar: 0.0,
-                material: Material { restitution: 0.4 },
-                stationary: true,
-                pos: ARENA_SIZE * Vector4::unit_w(),
-                rotation: alg::Rotor4::identity(),
-                vel: Velocity::zero(),
-                collider: Collider::HalfSpace {
-                    normal: -Vector4::unit_w(),
-                },
-            },
-            mesh_binding: None,
-        });
+        world.objects.insert(shapes::create_wall(
+            -ARENA_SIZE * Vector4::unit_x(),
+            Vector4::unit_x(),
+            Material { restitution: 0.4 },
+        ));
+        world.objects.insert(shapes::create_wall(
+            ARENA_SIZE * Vector4::unit_x(),
+            -Vector4::unit_x(),
+            Material { restitution: 0.4 },
+        ));
+        world.objects.insert(shapes::create_wall(
+            -ARENA_SIZE * Vector4::unit_z(),
+            Vector4::unit_z(),
+            Material { restitution: 0.4 },
+        ));
+        world.objects.insert(shapes::create_wall(
+            ARENA_SIZE * Vector4::unit_z(),
+            -Vector4::unit_z(),
+            Material { restitution: 0.4 },
+        ));
+        world.objects.insert(shapes::create_wall(
+            -ARENA_SIZE * Vector4::unit_w(),
+            Vector4::unit_w(),
+            Material { restitution: 0.4 },
+        ));
+        world.objects.insert(shapes::create_wall(
+            ARENA_SIZE * Vector4::unit_w(),
+            -Vector4::unit_w(),
+            Material { restitution: 0.4 },
+        ));
 
         let view_proj = ViewProjection::new(
             ctx,
@@ -231,6 +158,7 @@ impl Application for TestApp {
             steps: 0,
             cursor_ray: (Vector4::zero(), Vector4::unit_z()),
             selection: None,
+            drag_selection: None,
             key_states: KeyStates {
                 up: false,
                 down: false,
@@ -316,7 +244,8 @@ impl Application for TestApp {
                         let anchor_offset =
                             contact_point - object.body.pos - Vector4::unit_y();
 
-                        self.selection = Some(ObjectSelection {
+                        self.selection = Some(key);
+                        self.drag_selection = Some(DragSelection {
                             key,
                             plane_normal,
                             plane_distance,
@@ -331,7 +260,15 @@ impl Application for TestApp {
                 button: winit::event::MouseButton::Left,
                 ..
             } => {
+                self.drag_selection = None;
+            }
+            WindowEvent::MouseInput {
+                state: winit::event::ElementState::Pressed,
+                button: winit::event::MouseButton::Right,
+                ..
+            } => {
                 self.selection = None;
+                self.drag_selection = None;
             }
             WindowEvent::KeyboardInput {
                 input,
@@ -360,7 +297,7 @@ impl Application for TestApp {
     fn update(&mut self, _ctx: &mut Ctx) {
         let dt = 1f32 / 60f32;
 
-        if let Some(selection) = &mut self.selection {
+        if let Some(selection) = &mut self.drag_selection {
             if let Some(object) = self.world.objects.get_mut(selection.key) {
                 // intersect the current screen ray with the plane
                 let lambda = (selection.plane_distance
@@ -416,63 +353,69 @@ impl Application for TestApp {
 
         Window::new(im_str!("controls")).build(ui, || {
             if ui.button(im_str!("Spawn a shape"), [0.0, 0.0]) {
-                use hsl::HSL;
-                // let schlafli_symbol =
-                //     &[[3, 3, 3], [4, 3, 3], [3, 3, 4], [3, 4, 3]]
-                //         [(rand::random::<f32>() * 4.0) as usize];
-                let schlafli_symbol = &[3, 3, 5];
-
-                let (r, g, b) = HSL {
-                    h: 360.0 * rand::random::<f64>(),
-                    s: 1.0,
-                    l: 0.5 + rand::random::<f64>() * 0.1,
-                }
-                .to_rgb();
-                let color = Vector4::new(
-                    r as f32 / 255.0,
-                    g as f32 / 255.0,
-                    b as f32 / 255.0,
-                    1.0,
+                self.world.objects.insert(
+                    shapes::ShapeBuilder::new()
+                        .sphere(0.5)
+                        .build(graphics_ctx, &self.slice_pipeline),
                 );
-
-                let mesh = mesh::Mesh::from_schlafli_symbol(schlafli_symbol);
-                let tetrahedralized_mesh =
-                    mesh::TetrahedronMesh::from_mesh(&mesh, |_| color)
-                        .make_geodesic(4, 1.0);
-                let mesh_binding = self.slice_pipeline.create_mesh_binding(
-                    &graphics_ctx,
-                    &tetrahedralized_mesh.vertices,
-                    &tetrahedralized_mesh.indices,
-                );
-                self.world.objects.insert(Object {
-                    body: Body {
-                        mass: 1.0,
-                        moment_inertia_scalar: 1.0 / 6.0,
-                        material: Material { restitution: 0.2 },
-                        stationary: false,
-                        pos: Vector4::new(0.0, 5.0, 0.0, 0.0),
-                        rotation: alg::Rotor4::identity(),
-                        vel: Velocity {
-                            linear: Vector4::zero(),
-                            angular: alg::Bivec4::new(
-                                rand::random::<f32>() * 2.0 - 1.0,
-                                rand::random::<f32>() * 2.0 - 1.0,
-                                rand::random::<f32>() * 2.0 - 1.0,
-                                rand::random::<f32>() * 2.0 - 1.0,
-                                rand::random::<f32>() * 2.0 - 1.0,
-                                rand::random::<f32>() * 2.0 - 1.0,
-                            ),
-                        },
-                        collider: Collider::Sphere { radius: 1.0 },
-                    },
-                    mesh_binding: Some(mesh_binding),
-                });
             }
 
+            ui.text("Left click to select and drag an object.");
+            ui.text("Right click to deselect.");
+            ui.text("While dragging:");
             ui.text("W/S: raise/lower");
             ui.text("A/D: move in 4th dimension");
 
-            ui.text(format!("Selection: {:#?}", self.selection));
+            if let Some(obj) = self
+                .selection
+                .and_then(|key| self.world.objects.get_mut(key))
+            {
+                ui.text("Position:");
+                {
+                    let token = ui.push_id("position");
+                    Slider::new(im_str!("x"), -ARENA_SIZE..=ARENA_SIZE)
+                        .build(ui, &mut obj.body.pos.x);
+                    Slider::new(im_str!("y"), -ARENA_SIZE..=ARENA_SIZE)
+                        .build(ui, &mut obj.body.pos.y);
+                    Slider::new(im_str!("z"), -ARENA_SIZE..=ARENA_SIZE)
+                        .build(ui, &mut obj.body.pos.z);
+                    Slider::new(im_str!("w"), -ARENA_SIZE..=ARENA_SIZE)
+                        .build(ui, &mut obj.body.pos.w);
+                    token.pop(ui);
+                }
+
+                ui.text("Velocity:");
+                {
+                    let token = ui.push_id("velocity");
+                    Slider::new(im_str!("x"), -10.0..=10.0)
+                        .build(ui, &mut obj.body.vel.linear.x);
+                    Slider::new(im_str!("y"), -10.0..=10.0)
+                        .build(ui, &mut obj.body.vel.linear.y);
+                    Slider::new(im_str!("z"), -10.0..=10.0)
+                        .build(ui, &mut obj.body.vel.linear.z);
+                    Slider::new(im_str!("w"), -10.0..=10.0)
+                        .build(ui, &mut obj.body.vel.linear.w);
+                    token.pop(ui);
+                }
+
+                ui.text("Angular Velocity:");
+                {
+                    let token = ui.push_id("angular_velocity");
+                    Slider::new(im_str!("xy"), -10.0..=10.0)
+                        .build(ui, &mut obj.body.vel.angular.xy);
+                    Slider::new(im_str!("xz"), -10.0..=10.0)
+                        .build(ui, &mut obj.body.vel.angular.xz);
+                    Slider::new(im_str!("xw"), -10.0..=10.0)
+                        .build(ui, &mut obj.body.vel.angular.xw);
+                    Slider::new(im_str!("yz"), -10.0..=10.0)
+                        .build(ui, &mut obj.body.vel.angular.yz);
+                    Slider::new(im_str!("yw"), -10.0..=10.0)
+                        .build(ui, &mut obj.body.vel.angular.yw);
+                    Slider::new(im_str!("zw"), -10.0..=10.0)
+                        .build(ui, &mut obj.body.vel.angular.zw);
+                    token.pop(ui);
+                }
+            }
         });
 
         let mut encoder = graphics_ctx.device.create_command_encoder(
