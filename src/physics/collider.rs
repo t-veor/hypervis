@@ -190,8 +190,31 @@ impl CollisionDetection {
                 Collider::Mesh { mesh: mesh_a },
                 Collider::Sphere { radius: radius_b },
             ) => {
-                // TODO
-                None
+                let mesh_ref = super::gjk::OffsetMeshRef {
+                    mesh_ref: MeshRef {
+                        body: a,
+                        mesh: mesh_a,
+                    },
+                    offset: b.pos,
+                };
+                match super::gjk::gjk_intersection(mesh_ref, Vector4::unit_x())
+                {
+                    Ok(simplex) => None,
+                    Err(displacement) => {
+                        let distance = displacement.magnitude();
+                        if distance < *radius_b {
+                            let contact = b.pos + displacement;
+                            let depth = radius_b - distance;
+                            Some(CollisionManifold {
+                                normal: -displacement.normalize(),
+                                depth,
+                                contacts: vec![contact],
+                            })
+                        } else {
+                            None
+                        }
+                    }
+                }
             }
             (Collider::Sphere { .. }, Collider::HalfSpace { .. }) => {
                 // Just call this again with the arguments swapped

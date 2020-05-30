@@ -353,10 +353,17 @@ impl Application for TestApp {
         });
 
         Window::new(im_str!("controls")).build(ui, || {
-            if ui.button(im_str!("Spawn a shape"), [0.0, 0.0]) {
+            if ui.button(im_str!("Spawn a tesseract"), [0.0, 0.0]) {
                 self.world.objects.insert(
                     shapes::ShapeBuilder::new()
                         .regular_solid(RegularSolid::EightCell)
+                        .build(graphics_ctx, &self.slice_pipeline),
+                );
+            }
+            if ui.button(im_str!("Spawn a sphere"), [0.0, 0.0]) {
+                self.world.objects.insert(
+                    shapes::ShapeBuilder::new()
+                        .sphere(0.5)
                         .build(graphics_ctx, &self.slice_pipeline),
                 );
             }

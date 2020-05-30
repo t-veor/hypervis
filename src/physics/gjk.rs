@@ -10,6 +10,11 @@ pub trait Support {
     fn support(&self, direction: Vector4<f32>) -> Vector4<f32>;
 }
 
+pub struct OffsetMeshRef<'a> {
+    pub mesh_ref: MeshRef<'a>,
+    pub offset: Vector4<f32>,
+}
+
 impl<'a> Support for MeshRef<'a> {
     fn support(&self, direction: Vector4<f32>) -> Vector4<f32> {
         let body_d = self.body.world_vec_to_body(direction);
@@ -27,6 +32,12 @@ impl<'a> Support for MeshRef<'a> {
 impl<'a> Support for SphereRef<'a> {
     fn support(&self, direction: Vector4<f32>) -> Vector4<f32> {
         direction.normalize() * self.radius + self.body.pos
+    }
+}
+
+impl<'a> Support for OffsetMeshRef<'a> {
+    fn support(&self, direction: Vector4<f32>) -> Vector4<f32> {
+        self.mesh_ref.support(direction) - self.offset
     }
 }
 
@@ -61,7 +72,7 @@ fn support(m: MeshRef, direction: Vector4<f32>) -> Vector4<f32> {
     )
 }
 
-struct Simplex {
+pub struct Simplex {
     vertices: [Vector4<f32>; 5],
     length: usize,
 }
@@ -99,16 +110,15 @@ impl Simplex {
         self.length -= 1;
     }
 
-    // If self contains the origin, returns false. Otherwise, updates self to be
-    // the closest simplex on self to the origin, and sets d to be a direction
-    // towards the origin normal to the updated simplex.
-    fn nearest_simplex(&mut self, direction: &mut Vector4<f32>) -> bool {
+    // If self contains the origin, returns None. Otherwise, updates self to be
+    // the closest simplex on self to the origin, and returns the closest point
+    // on the updated simplex to the origin.
+    fn nearest_simplex(&mut self) -> Option<Vector4<f32>> {
         match self.length {
             1 => {
-                // single point case, set direction to -a and return false
+                // single point case, just return it
                 let a = self.vertices[0];
-                *direction = -a;
-                false
+                Some(a)
             }
             2 => {
                 // line case, return a direction perpendicular
@@ -117,11 +127,10 @@ impl Simplex {
                 let lambda = -a.dot(ab) / ab.magnitude2();
                 // lambda is now such that a + lambda * (b - a) is the point on
                 // the defined by a and b closest to the origin.
-                *direction = -a - lambda * ab;
-                false
+                Some(a + lambda * ab)
             }
             3 => {
-                // triangle case, return a direction perpendicular
+                // triangle case, return the closest point on the triangle
                 let (a, b, c) =
                     (self.vertices[0], self.vertices[1], self.vertices[2]);
                 let (ab, ac) = (b - a, c - a);
@@ -138,9 +147,7 @@ impl Simplex {
 
                 let (lambda, mu) = (x.x, x.y);
 
-                *direction = -a - lambda * ab - mu * ac;
-
-                false
+                Some(a + lambda * ab + mu * ac)
             }
             4 => {
                 // tetrahedron case, return a direction perpendicular
@@ -152,13 +159,10 @@ impl Simplex {
 
                 // We can use the triple cross product to just grab a normal to
                 // the tetrahedron
-                *direction = triple_cross_product(ab, ac, ad);
-                // check that the direction is pointing opposite a
-                if a.dot(*direction) > 0.0 {
-                    *direction = -*direction;
-                }
+                let n = triple_cross_product(ab, ac, ad);
+                let k = a.dot(n) / n.magnitude2();
 
-                false
+                Some(k * n)
             }
             5 => {
                 // Now we have a full 5-cell as our simplex. To check if the
@@ -200,30 +204,24 @@ impl Simplex {
                         // We can then remove e from the simplex and set
                         // direction to the normal pointing towards the origin.
                         self.remove(i);
-                        if ao_dist > 0.0 {
-                            // normal is pointing towards origin
-                            *direction = normal;
-                        } else {
-                            // normal pointing away from origin
-                            *direction = -normal;
-                        }
-                        return false;
+                        let k = -ao_dist / normal.magnitude2();
+                        return Some(k * normal);
                     }
                 }
 
                 // If we reach here we've passed all the halfspace tests, so
                 // the tetrahedron does indeed contain the origin!
-                true
+                None
             }
             _ => unreachable!("invalid simplex!"),
         }
     }
 }
 
-fn gjk_intersection<S>(
+pub fn gjk_intersection<S>(
     object: S,
     initial_direction: Vector4<f32>,
-) -> Option<Simplex>
+) -> Result<Simplex, Vector4<f32>>
 where
     S: Support,
 {
@@ -233,12 +231,13 @@ where
 
     loop {
         a = object.support(d);
-        if a.dot(d) < 0.0 {
-            return None;
+        if a.dot(d) < EPSILON {
+            return Err(-d);
         }
         s.push(a);
-        if s.nearest_simplex(&mut d) {
-            return Some(s);
+        match s.nearest_simplex() {
+            Some(closest) => d = -closest,
+            None => return Ok(s),
         }
     }
 }
