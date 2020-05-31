@@ -2,6 +2,8 @@ mod clip;
 mod tetrahedra;
 mod todd_coxeter;
 
+use crate::alg::triple_cross_product;
+use crate::util::NotNaN;
 use cgmath::{InnerSpace, Vector4, Zero};
 use smallvec::SmallVec;
 
@@ -254,6 +256,159 @@ impl Mesh {
             faces,
             cells,
         }
+    }
+
+    pub fn closest_point_to(&self, point: Vector4<f32>) -> Vector4<f32> {
+        // first run half-space tests to determine if the point is inside the
+        // mesh
+        let mut inside = true;
+        for cell in &self.cells {
+            let v0 = self.cell_representative_vertex(cell);
+            if v0.dot(cell.normal) < point.dot(cell.normal) {
+                inside = false;
+                break;
+            }
+        }
+
+        if inside {
+            return point;
+        }
+
+        // then, for each cell, find the closest point on the cell to the
+        // vertex, and return the minimum
+        self.cells
+            .iter()
+            .map(|c| self.closest_on_cell(c, point))
+            .min_by_key(|v| NotNaN::new((v - point).magnitude2()).unwrap())
+            .unwrap()
+    }
+
+    fn closest_on_cell(
+        &self,
+        cell: &Cell,
+        point: Vector4<f32>,
+    ) -> Vector4<f32> {
+        // project the point onto the cell hyperplane
+        let v0 = self.cell_representative_vertex(cell);
+        let k = (point.dot(cell.normal) - v0.dot(cell.normal))
+            / cell.normal.magnitude2();
+        let point = point - k * cell.normal;
+
+        // This is the same algorithm but reduced down a dimension
+        // Check to see if the point is within all the faces
+        let mut inside = true;
+        for face_idx in &cell.faces {
+            let face = &self.faces[*face_idx];
+            let v0 = self.face_representative_vertex(face);
+            let e0 = self.edge_vector(face.edges[0]);
+            let e1 = self.edge_vector(face.edges[1]);
+            let mut normal =
+                triple_cross_product(e0, e1, cell.normal).normalize();
+            if v0.dot(normal) < 0.0 {
+                normal = -normal;
+            }
+
+            if v0.dot(normal) < point.dot(normal) {
+                inside = false;
+                break;
+            }
+        }
+
+        if inside {
+            return point;
+        }
+
+        // then, for each face, find the closest point on the face to the
+        // vertex, and return the minimum
+        cell.faces
+            .iter()
+            .map(|face_idx| &self.faces[*face_idx])
+            .map(|face| self.closest_on_face(face, cell.normal, point))
+            .min_by_key(|v| NotNaN::new((v - point).magnitude2()).unwrap())
+            .unwrap()
+    }
+
+    fn closest_on_face(
+        &self,
+        face: &Face,
+        cell_normal: Vector4<f32>,
+        point: Vector4<f32>,
+    ) -> Vector4<f32> {
+        // Project the point onto the face
+        let v0 = self.face_representative_vertex(face);
+        let e0 = self.edge_vector(face.edges[0]);
+        let e1 = self.edge_vector(face.edges[1]);
+        let mut normal = triple_cross_product(e0, e1, cell_normal);
+        if v0.dot(normal) < 0.0 {
+            normal = -normal;
+        }
+
+        let k = (point.dot(normal) - v0.dot(normal)) / normal.magnitude2();
+        let point = point - k * normal;
+
+        // Check if the poinrt is inside all the edges
+        let mut inside = true;
+        for edge_idx in &face.edges {
+            let edge = &self.edges[*edge_idx];
+            let v0 = self.edge_representative_vertex(edge);
+            let e0 = self.edge_vector(*edge_idx);
+            let mut edge_normal = triple_cross_product(e0, normal, cell_normal);
+            if edge_normal.dot(v0) < 0.0 {
+                edge_normal = -edge_normal;
+            }
+
+            if v0.dot(edge_normal) < point.dot(normal) {
+                inside = false;
+                break;
+            }
+        }
+
+        if inside {
+            return point;
+        }
+
+        // then, for each edge, get the closest point on the edge to the point,
+        // and return the minimum
+        face.edges
+            .iter()
+            .map(|edge_idx| &self.edges[*edge_idx])
+            .map(|edge| self.closest_on_edge(edge, point))
+            .min_by_key(|v| NotNaN::new((v - point).magnitude2()).unwrap())
+            .unwrap()
+    }
+
+    fn closest_on_edge(
+        &self,
+        edge: &Edge,
+        point: Vector4<f32>,
+    ) -> Vector4<f32> {
+        let a = self.vertices[edge.hd_vertex];
+        let b = self.vertices[edge.tl_vertex];
+        let ab = b - a;
+
+        let lambda = (a - point).dot(ab) / ab.magnitude2();
+        let lambda = lambda.min(1.0).max(0.0);
+
+        a + lambda * ab
+    }
+
+    fn cell_representative_vertex(&self, cell: &Cell) -> Vector4<f32> {
+        self.face_representative_vertex(&self.faces[cell.faces[0]])
+    }
+
+    fn face_representative_vertex(&self, face: &Face) -> Vector4<f32> {
+        self.edge_representative_vertex(&self.edges[face.edges[0]])
+    }
+
+    fn edge_representative_vertex(&self, edge: &Edge) -> Vector4<f32> {
+        self.vertices[edge.hd_vertex]
+    }
+
+    fn edge_vector(&self, edge_idx: usize) -> Vector4<f32> {
+        let edge = &self.edges[edge_idx];
+        let v0 = self.vertices[edge.hd_vertex];
+        let v1 = self.vertices[edge.tl_vertex];
+        v1 - v0
     }
 }
 

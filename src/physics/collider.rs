@@ -190,29 +190,28 @@ impl CollisionDetection {
                 Collider::Mesh { mesh: mesh_a },
                 Collider::Sphere { radius: radius_b },
             ) => {
-                let mesh_ref = super::gjk::OffsetMeshRef {
-                    mesh_ref: MeshRef {
-                        body: a,
-                        mesh: mesh_a,
-                    },
-                    offset: b.pos,
-                };
-                match super::gjk::gjk_intersection(mesh_ref, Vector4::unit_x())
-                {
-                    Ok(simplex) => None,
-                    Err(displacement) => {
-                        let distance = displacement.magnitude();
-                        if distance < *radius_b {
-                            let contact = b.pos + displacement;
-                            let depth = radius_b - distance;
-                            Some(CollisionManifold {
-                                normal: -displacement.normalize(),
-                                depth,
-                                contacts: vec![contact],
-                            })
-                        } else {
-                            None
-                        }
+                if (a.pos - b.pos).magnitude() > mesh_a.radius + radius_b {
+                    return None;
+                }
+
+                let closest_point = a.body_pos_to_world(
+                    mesh_a.closest_point_to(a.world_pos_to_body(b.pos)),
+                );
+                dbg!(closest_point);
+                let displacement = closest_point - b.pos;
+                if displacement.magnitude() < EPSILON {
+                    None
+                } else {
+                    let depth = radius_b - displacement.magnitude2();
+                    dbg!(depth);
+                    if depth > 0.0 {
+                        Some(CollisionManifold {
+                            depth,
+                            normal: -displacement.normalize(),
+                            contacts: vec![closest_point],
+                        })
+                    } else {
+                        None
                     }
                 }
             }
