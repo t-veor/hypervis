@@ -35,7 +35,7 @@ impl CollisionConstraint {
 
         let e = a.material.restitution.min(b.material.restitution);
         // TODO: move this into the Material struct
-        let mu = 1.5;
+        let mu = 0.4;
 
         let tangents = crate::util::orthonormal_basis(normal);
 
@@ -140,20 +140,32 @@ impl CollisionConstraint {
             let rel_vel = b.vel_at(contact) - a.vel_at(contact);
 
             // calculate friction impulse
+            let mut new_impulses = [0f32; 3];
             for i in 0..3 {
                 let lambda = -rel_vel.dot(self.tangents[i]) * tangent_mass[i];
-                let max_lambda = self.mu * *normal_impulse;
-                let prev_impulse = tangent_impulse[i];
-                tangent_impulse[i] =
-                    (prev_impulse + lambda).min(max_lambda).max(-max_lambda);
+                new_impulses[i] = tangent_impulse[i] + lambda;
+            }
+
+            // clamp the total magnitude
+            let max_impulse = (self.mu * *normal_impulse).abs();
+            let mut impulse_mag2 = 0f32;
+            new_impulses.iter().for_each(|i| impulse_mag2 += i * i);
+            let impulse_mag = impulse_mag2.sqrt();
+            if impulse_mag > max_impulse {
+                let factor = max_impulse / impulse_mag;
+                new_impulses.iter_mut().for_each(|i| *i *= factor);
+            }
+
+            // apply the friction impulses
+            for i in 0..3 {
                 let impulse =
-                    self.tangents[i] * (tangent_impulse[i] - prev_impulse);
+                    self.tangents[i] * (new_impulses[i] - tangent_impulse[i]);
+                tangent_impulse[i] = new_impulses[i];
                 a.resolve_impulse(-impulse, contact);
                 b.resolve_impulse(impulse, contact);
             }
 
             // calculate normal impulse
-            let rel_vel = b.vel_at(contact) - a.vel_at(contact);
             let rel_vel_normal = rel_vel.dot(self.normal);
             let lambda = normal_mass * (-rel_vel_normal + bias);
             let prev_impulse = *normal_impulse;
