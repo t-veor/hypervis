@@ -318,8 +318,6 @@ impl Mesh {
             return point;
         }
 
-        // then, for each face, find the closest point on the face to the
-        // vertex, and return the minimum
         cell.faces
             .iter()
             .map(|face_idx| &self.faces[*face_idx])
@@ -357,7 +355,7 @@ impl Mesh {
                 edge_normal = -edge_normal;
             }
 
-            if v0.dot(edge_normal) < point.dot(normal) {
+            if v0.dot(edge_normal) < point.dot(edge_normal) {
                 inside = false;
                 break;
             }

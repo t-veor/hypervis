@@ -166,8 +166,8 @@ impl ShapeBuilder {
                                         - 2.5)
                                     % 360.0
                                     + 360.0,
-                                s: 0.9,
-                                l: 0.6 + rand::random::<f64>() * 0.1,
+                                s: 0.8,
+                                l: 0.5 + rand::random::<f64>() * 0.1,
                             }
                             .to_rgb();
                             Vector4::new(

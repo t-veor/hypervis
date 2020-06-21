@@ -25,7 +25,7 @@ pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 pub const SHADOW_FORMAT: wgpu::TextureFormat =
     wgpu::TextureFormat::Depth32Float;
 pub const SHADOW_SIZE: wgpu::Extent3d = wgpu::Extent3d {
-    width: 1024,
-    height: 1024,
+    width: 2048,
+    height: 2048,
     depth: 1,
 };

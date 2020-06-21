@@ -197,13 +197,11 @@ impl CollisionDetection {
                 let closest_point = a.body_pos_to_world(
                     mesh_a.closest_point_to(a.world_pos_to_body(b.pos)),
                 );
-                dbg!(closest_point);
                 let displacement = closest_point - b.pos;
                 if displacement.magnitude() < EPSILON {
                     None
                 } else {
-                    let depth = radius_b - displacement.magnitude2();
-                    dbg!(depth);
+                    let depth = radius_b - displacement.magnitude();
                     if depth > 0.0 {
                         Some(CollisionManifold {
                             depth,
@@ -320,12 +318,6 @@ impl CollisionDetection {
             axis_check!(axis);
         }
 
-        // I'm not fully convinced that we need proper edge-face collision
-        // detection. In the case that the SAT algorithm overestimates because
-        // it does not consider an edge-face, the contact pruning algorithm
-        // should prune the contact down to nothing. Additionally, edge-face
-        // collision detection is _really_ slow...
-        /*
         for edge_idx in 0..a.mesh.edges.len() {
             edge_cells_cache = None;
             for face_idx in 0..b.mesh.faces.len() {
@@ -349,7 +341,6 @@ impl CollisionDetection {
                 axis_check!(axis);
             }
         }
-        */
 
         curr_contact
     }

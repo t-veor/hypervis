@@ -242,8 +242,7 @@ impl Application for TestApp {
                             self.cursor_ray.0 + self.cursor_ray.1 * min_lambda;
                         let plane_normal = Vector4::unit_y();
                         let plane_distance = contact_point.dot(plane_normal);
-                        let anchor_offset =
-                            contact_point - object.body.pos - Vector4::unit_y();
+                        let anchor_offset = contact_point - object.body.pos;
 
                         self.selection = Some(key);
                         self.drag_selection = Some(DragSelection {
@@ -364,6 +363,27 @@ impl Application for TestApp {
                 self.world.objects.insert(
                     shapes::ShapeBuilder::new()
                         .sphere(0.5)
+                        .build(graphics_ctx, &self.slice_pipeline),
+                );
+            }
+            if ui.button(im_str!("Spawn a 5-cell"), [0.0, 0.0]) {
+                self.world.objects.insert(
+                    shapes::ShapeBuilder::new()
+                        .regular_solid(RegularSolid::FiveCell)
+                        .build(graphics_ctx, &self.slice_pipeline),
+                );
+            }
+            if ui.button(im_str!("Spawn a 16-cell"), [0.0, 0.0]) {
+                self.world.objects.insert(
+                    shapes::ShapeBuilder::new()
+                        .regular_solid(RegularSolid::SixteenCell)
+                        .build(graphics_ctx, &self.slice_pipeline),
+                );
+            }
+            if ui.button(im_str!("Spawn a 24-cell"), [0.0, 0.0]) {
+                self.world.objects.insert(
+                    shapes::ShapeBuilder::new()
+                        .regular_solid(RegularSolid::TwentyFourCell)
                         .build(graphics_ctx, &self.slice_pipeline),
                 );
             }
