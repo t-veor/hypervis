@@ -72,7 +72,7 @@ impl Application for TestApp {
         let slice_plane = orthogonal;
 
         let light = Light::new(
-            Point3::new(-4.0, 10.0, -6.0),
+            Point3::new(4.0, 10.0, 6.0),
             60.0,
             Vector4::new(1.0, 1.0, 1.0, 1.0),
         );
@@ -94,49 +94,12 @@ impl Application for TestApp {
 
         let mut world = World::new();
 
-        world.objects.insert(shapes::create_floor(
-            &ctx.graphics_ctx,
-            &slice_pipeline,
-            2.0 * ARENA_SIZE,
-            Material { restitution: 0.4 },
-        ));
-
-        // side walls
-        world.objects.insert(shapes::create_wall(
-            -ARENA_SIZE * Vector4::unit_x(),
-            Vector4::unit_x(),
-            Material { restitution: 0.4 },
-        ));
-        world.objects.insert(shapes::create_wall(
-            ARENA_SIZE * Vector4::unit_x(),
-            -Vector4::unit_x(),
-            Material { restitution: 0.4 },
-        ));
-        world.objects.insert(shapes::create_wall(
-            -ARENA_SIZE * Vector4::unit_z(),
-            Vector4::unit_z(),
-            Material { restitution: 0.4 },
-        ));
-        world.objects.insert(shapes::create_wall(
-            ARENA_SIZE * Vector4::unit_z(),
-            -Vector4::unit_z(),
-            Material { restitution: 0.4 },
-        ));
-        world.objects.insert(shapes::create_wall(
-            -ARENA_SIZE * Vector4::unit_w(),
-            Vector4::unit_w(),
-            Material { restitution: 0.4 },
-        ));
-        world.objects.insert(shapes::create_wall(
-            ARENA_SIZE * Vector4::unit_w(),
-            -Vector4::unit_w(),
-            Material { restitution: 0.4 },
-        ));
+        world.add_walls(ARENA_SIZE, &ctx.graphics_ctx, &slice_pipeline);
 
         let view_proj = ViewProjection::new(
             ctx,
             90.0,
-            Point3::new(1.0, 5.0, -5.0),
+            Point3::new(-1.0, 5.0, 5.0),
             Point3::new(0.0, 0.0, 0.0),
         );
 
@@ -174,7 +137,7 @@ impl Application for TestApp {
         self.view_proj = ViewProjection::new(
             ctx,
             90.0,
-            Point3::new(1.0, 5.0, -5.0),
+            Point3::new(-1.0, 5.0, 5.0),
             Point3::new(0.0, 1.0, 0.0),
         );
 
@@ -221,6 +184,10 @@ impl Application for TestApp {
                 let mut min_lambda = std::f32::INFINITY;
                 let mut selection = None;
                 for (key, object) in self.world.objects.iter() {
+                    if object.body.stationary {
+                        continue;
+                    }
+
                     match object
                         .body
                         .ray_intersect(self.cursor_ray.0, self.cursor_ray.1)
@@ -387,6 +354,17 @@ impl Application for TestApp {
                         .build(graphics_ctx, &self.slice_pipeline),
                 );
             }
+            if ui.button(im_str!("Domino Track"), [0.0, 0.0]) {
+                self.world.domino_track(graphics_ctx, &self.slice_pipeline)
+            }
+            if ui.button(im_str!("Clear all"), [0.0, 0.0]) {
+                self.world.objects.clear();
+                self.world.add_walls(
+                    ARENA_SIZE,
+                    graphics_ctx,
+                    &self.slice_pipeline,
+                );
+            }
 
             ui.text("Left click to select and drag an object.");
             ui.text("Right click to deselect.");
@@ -394,10 +372,9 @@ impl Application for TestApp {
             ui.text("W/S: raise/lower");
             ui.text("A/D: move in 4th dimension");
 
-            if let Some(obj) = self
-                .selection
-                .and_then(|key| self.world.objects.get_mut(key))
-            {
+            if let Some((key, obj)) = self.selection.and_then(|key| {
+                self.world.objects.get_mut(key).map(|i| (key, i))
+            }) {
                 ui.text("Position:");
                 {
                     let token = ui.push_id("position");
@@ -442,6 +419,10 @@ impl Application for TestApp {
                     Slider::new(im_str!("zw"), -10.0..=10.0)
                         .build(ui, &mut obj.body.vel.angular.zw);
                     token.pop(ui);
+                }
+
+                if ui.button(im_str!("Delete"), [0.0, 0.0]) {
+                    self.world.objects.remove(key);
                 }
             }
         });

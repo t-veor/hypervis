@@ -1,6 +1,8 @@
+use cgmath::Vector4;
 use slotmap::{new_key_type, DenseSlotMap};
 use std::collections::HashMap;
 
+use crate::alg::Bivec4;
 use crate::context::{
     graphics::{
         MeshBinding, ShadowPipeline, SlicePipeline, SlicePlane, Transform4,
@@ -8,7 +10,8 @@ use crate::context::{
     },
     GraphicsContext,
 };
-use crate::physics::{Body, CollisionConstraint, CollisionDetection};
+use crate::physics::{Body, CollisionConstraint, CollisionDetection, Material};
+use crate::shapes;
 
 pub struct Object {
     pub body: Body,
@@ -92,6 +95,111 @@ impl World {
         }
     }
 
+    pub fn add_walls(
+        &mut self,
+        arena_size: f32,
+        ctx: &GraphicsContext,
+        slice_pipeline: &SlicePipeline,
+    ) {
+        self.objects.insert(shapes::create_floor(
+            ctx,
+            slice_pipeline,
+            2.0 * arena_size,
+            Material { restitution: 0.4 },
+        ));
+
+        // side walls
+        self.objects.insert(shapes::create_wall(
+            -arena_size * Vector4::unit_x(),
+            Vector4::unit_x(),
+            Material { restitution: 0.4 },
+        ));
+        self.objects.insert(shapes::create_wall(
+            arena_size * Vector4::unit_x(),
+            -Vector4::unit_x(),
+            Material { restitution: 0.4 },
+        ));
+        self.objects.insert(shapes::create_wall(
+            -arena_size * Vector4::unit_z(),
+            Vector4::unit_z(),
+            Material { restitution: 0.4 },
+        ));
+        self.objects.insert(shapes::create_wall(
+            arena_size * Vector4::unit_z(),
+            -Vector4::unit_z(),
+            Material { restitution: 0.4 },
+        ));
+        self.objects.insert(shapes::create_wall(
+            -arena_size * Vector4::unit_w(),
+            Vector4::unit_w(),
+            Material { restitution: 0.4 },
+        ));
+        self.objects.insert(shapes::create_wall(
+            arena_size * Vector4::unit_w(),
+            -Vector4::unit_w(),
+            Material { restitution: 0.4 },
+        ));
+    }
+
+    pub fn domino_track(
+        &mut self,
+        ctx: &GraphicsContext,
+        slice_pipeline: &SlicePipeline,
+    ) {
+        self.objects.clear();
+        self.add_walls(10.0, ctx, slice_pipeline);
+
+        let mut domino = |x: f32, z: f32, w: f32, xz_deg: f32| {
+            self.objects.insert(
+                shapes::ShapeBuilder::new()
+                    .cuboid(Vector4::new(1.0, 2.0, 0.3, 1.0))
+                    .position(Vector4::new(x, 1.0, z, w))
+                    .rotation(
+                        Bivec4::new(
+                            0.0,
+                            xz_deg * std::f32::consts::PI / 360.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                        )
+                        .exp(),
+                    )
+                    .build(ctx, slice_pipeline),
+            )
+        };
+
+        domino(-4.0, 2.0, 0.0, 0.0);
+        domino(-4.0, 1.0, 0.2, 0.0);
+        domino(-4.0, 0.0, 0.4, 0.0);
+        domino(-3.8, -1.0, 0.5, -15.0);
+        domino(-3.5, -1.8, 0.6, -30.0);
+        domino(-3.0, -2.4, 0.7, -45.0);
+        domino(-2.5, -2.8, 0.8, -60.0);
+        domino(-1.8, -3.1, 0.9, -75.0);
+        domino(-1.0, -3.2, 1.0, -90.0);
+        domino(0.0, -3.2, 1.2, -90.0);
+        domino(1.0, -3.2, 1.4, -90.0);
+        domino(2.0, -3.2, 1.2, -90.0);
+        domino(2.8, -3.1, 1.0, -105.0);
+        domino(3.5, -2.8, 0.9, -120.0);
+        domino(4.0, -2.4, 0.8, -135.0);
+        domino(4.5, -1.8, 0.7, -150.0);
+        domino(4.8, -1.0, 0.6, -165.0);
+        domino(5.0, 0.0, 0.5, -180.0);
+        domino(5.0, 1.0, 0.3, -180.0);
+        domino(5.0, 2.0, 0.1, -180.0);
+
+        self.objects.insert(
+            shapes::ShapeBuilder::new()
+                .cuboid(Vector4::new(0.4, 3.0, 10.0, 5.0))
+                .position(Vector4::new(0.0, 1.5, -2.0, -2.0))
+                .color(Vector4::new(0.8, 0.8, 0.8, 1.0))
+                .stationary(true)
+                .build(ctx, slice_pipeline),
+        );
+    }
+
     pub fn update(&mut self, dt: f32) {
         let mut collisions = Vec::new();
         let mut mass_adjustments = HashMap::new();
@@ -133,7 +241,7 @@ impl World {
             ));
         }
 
-        const SOLVER_ITERS: usize = 20;
+        const SOLVER_ITERS: usize = 50;
         for _ in 0..SOLVER_ITERS {
             for (i, j, constraint) in constraints.iter_mut() {
                 let (a, b) = slotmap_get_mut2(&mut self.objects, *i, *j);

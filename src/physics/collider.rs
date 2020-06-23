@@ -194,18 +194,28 @@ impl CollisionDetection {
                     return None;
                 }
 
-                let closest_point = a.body_pos_to_world(
-                    mesh_a.closest_point_to(a.world_pos_to_body(b.pos)),
-                );
+                let (inside, closest_point_body) =
+                    mesh_a.closest_point_to(a.world_pos_to_body(b.pos));
+                let closest_point = a.body_pos_to_world(closest_point_body);
                 let displacement = closest_point - b.pos;
                 if displacement.magnitude() < EPSILON {
                     None
                 } else {
-                    let depth = radius_b - displacement.magnitude();
+                    let (depth, normal) = if inside {
+                        (
+                            radius_b + displacement.magnitude(),
+                            displacement.normalize(),
+                        )
+                    } else {
+                        (
+                            radius_b - displacement.magnitude(),
+                            -displacement.normalize(),
+                        )
+                    };
                     if depth > 0.0 {
                         Some(CollisionManifold {
                             depth,
-                            normal: -displacement.normalize(),
+                            normal,
                             contacts: vec![closest_point],
                         })
                     } else {

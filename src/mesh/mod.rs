@@ -258,7 +258,10 @@ impl Mesh {
         }
     }
 
-    pub fn closest_point_to(&self, point: Vector4<f32>) -> Vector4<f32> {
+    pub fn closest_point_to(
+        &self,
+        point: Vector4<f32>,
+    ) -> (bool, Vector4<f32>) {
         // first run half-space tests to determine if the point is inside the
         // mesh
         let mut inside = true;
@@ -266,21 +269,19 @@ impl Mesh {
             let v0 = self.cell_representative_vertex(cell);
             if v0.dot(cell.normal) < point.dot(cell.normal) {
                 inside = false;
-                break;
             }
-        }
-
-        if inside {
-            return point;
         }
 
         // then, for each cell, find the closest point on the cell to the
         // vertex, and return the minimum
-        self.cells
-            .iter()
-            .map(|c| self.closest_on_cell(c, point))
-            .min_by_key(|v| NotNaN::new((v - point).magnitude2()).unwrap())
-            .unwrap()
+        (
+            inside,
+            self.cells
+                .iter()
+                .map(|c| self.closest_on_cell(c, point))
+                .min_by_key(|v| NotNaN::new((v - point).magnitude2()).unwrap())
+                .unwrap(),
+        )
     }
 
     fn closest_on_cell(

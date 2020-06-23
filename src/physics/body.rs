@@ -22,12 +22,16 @@ impl Velocity {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum MomentInertia {
+    Isotropic(f32),
+    Principal(Bivec4),
+}
+
 #[derive(Clone)]
 pub struct Body {
     pub mass: f32,
-    // for tesseracts it's sufficient to keep this as a scalar, but it really
-    // should be a tensor of shape Bivec4 -> Bivec4
-    pub moment_inertia_scalar: f32,
+    pub moment_inertia: MomentInertia,
     pub material: Material,
     pub stationary: bool,
 
@@ -68,11 +72,18 @@ impl Body {
     }
 
     pub fn inverse_moment_of_inertia(&self, body_bivec: &Bivec4) -> Bivec4 {
-        if self.moment_inertia_scalar <= 0.0 {
-            return Bivec4::zero();
+        match self.moment_inertia {
+            MomentInertia::Isotropic(i) if i <= 0.0 => Bivec4::zero(),
+            MomentInertia::Isotropic(i) => 1.0 / i * *body_bivec,
+            MomentInertia::Principal(b) => Bivec4::new(
+                body_bivec.xy / b.xy,
+                body_bivec.xz / b.xz,
+                body_bivec.xw / b.xw,
+                body_bivec.yz / b.yz,
+                body_bivec.yw / b.yw,
+                body_bivec.zw / b.zw,
+            ),
         }
-
-        1.0 / self.moment_inertia_scalar * *body_bivec
     }
 
     pub fn vel_at(&self, world_pos: Vector4<f32>) -> Vector4<f32> {
