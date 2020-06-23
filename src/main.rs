@@ -73,7 +73,7 @@ impl Application for TestApp {
 
         let light = Light::new(
             Point3::new(4.0, 10.0, 6.0),
-            60.0,
+            90.0,
             Vector4::new(1.0, 1.0, 1.0, 1.0),
         );
 
