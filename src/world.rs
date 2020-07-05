@@ -38,20 +38,20 @@ impl Object {
         }
     }
 
-    pub fn render(
-        &self,
-        pipeline: &TriangleListPipeline,
-        render_pass: &mut wgpu::RenderPass,
+    pub fn render<'a: 'c, 'b, 'c>(
+        &'a self,
+        pipeline: &'a TriangleListPipeline,
+        render_pass: &'b mut wgpu::RenderPass<'c>,
     ) {
         if let Some(mesh_binding) = &self.mesh_binding {
             pipeline.render(render_pass, mesh_binding);
         }
     }
 
-    pub fn shadow_pass(
-        &self,
-        pipeline: &ShadowPipeline,
-        render_pass: &mut wgpu::RenderPass,
+    pub fn shadow_pass<'a: 'c, 'b, 'c>(
+        &'a self,
+        pipeline: &'a ShadowPipeline,
+        render_pass: &'b mut wgpu::RenderPass<'c>,
     ) {
         if let Some(mesh_binding) = &self.mesh_binding {
             pipeline.render(render_pass, mesh_binding);
@@ -158,20 +158,20 @@ impl World {
         }
     }
 
-    pub fn render(
-        &self,
-        pipeline: &TriangleListPipeline,
-        render_pass: &mut wgpu::RenderPass,
+    pub fn render<'a: 'c, 'b, 'c>(
+        &'a self,
+        pipeline: &'a TriangleListPipeline,
+        render_pass: &'b mut wgpu::RenderPass<'c>,
     ) {
         for i in self.objects.values() {
             i.render(pipeline, render_pass);
         }
     }
 
-    pub fn shadow_pass(
-        &self,
-        pipeline: &ShadowPipeline,
-        render_pass: &mut wgpu::RenderPass,
+    pub fn shadow_pass<'a: 'c, 'b, 'c>(
+        &'a self,
+        pipeline: &'a ShadowPipeline,
+        render_pass: &'b mut wgpu::RenderPass<'c>,
     ) {
         for i in self.objects.values() {
             i.shadow_pass(pipeline, render_pass);

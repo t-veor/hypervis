@@ -13,6 +13,9 @@ pub struct Transform4 {
     pub transform: Matrix4<f32>,
 }
 
+unsafe impl bytemuck::Pod for Transform4 {}
+unsafe impl bytemuck::Zeroable for Transform4 {}
+
 impl Default for Transform4 {
     fn default() -> Self {
         Self {

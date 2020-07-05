@@ -20,6 +20,9 @@ pub struct DrawIndirectCommand {
     first_instance: u32,
 }
 
+unsafe impl bytemuck::Pod for DrawIndirectCommand {}
+unsafe impl bytemuck::Zeroable for DrawIndirectCommand {}
+
 impl Default for DrawIndirectCommand {
     fn default() -> Self {
         Self {
@@ -61,13 +64,14 @@ impl SlicePipeline {
 
         let uniform_bind_group_layout = ctx.device.create_bind_group_layout(
             &wgpu::BindGroupLayoutDescriptor {
+                label: None,
                 bindings: &[
-                    wgpu::BindGroupLayoutBinding {
+                    wgpu::BindGroupLayoutEntry {
                         binding: 0,
                         visibility: wgpu::ShaderStage::COMPUTE,
                         ty: wgpu::BindingType::UniformBuffer { dynamic: false },
                     },
-                    wgpu::BindGroupLayoutBinding {
+                    wgpu::BindGroupLayoutEntry {
                         binding: 1,
                         visibility: wgpu::ShaderStage::COMPUTE,
                         ty: wgpu::BindingType::UniformBuffer { dynamic: false },
@@ -78,13 +82,14 @@ impl SlicePipeline {
 
         let src_bind_group_layout = ctx.device.create_bind_group_layout(
             &wgpu::BindGroupLayoutDescriptor {
+                label: None,
                 bindings: &[
-                    wgpu::BindGroupLayoutBinding {
+                    wgpu::BindGroupLayoutEntry {
                         binding: 0,
                         visibility: wgpu::ShaderStage::COMPUTE,
                         ty: wgpu::BindingType::UniformBuffer { dynamic: false },
                     },
-                    wgpu::BindGroupLayoutBinding {
+                    wgpu::BindGroupLayoutEntry {
                         binding: 1,
                         visibility: wgpu::ShaderStage::COMPUTE,
                         ty: wgpu::BindingType::StorageBuffer {
@@ -92,7 +97,7 @@ impl SlicePipeline {
                             readonly: true,
                         },
                     },
-                    wgpu::BindGroupLayoutBinding {
+                    wgpu::BindGroupLayoutEntry {
                         binding: 2,
                         visibility: wgpu::ShaderStage::COMPUTE,
                         ty: wgpu::BindingType::StorageBuffer {
@@ -106,8 +111,9 @@ impl SlicePipeline {
 
         let dst_bind_group_layout = ctx.device.create_bind_group_layout(
             &wgpu::BindGroupLayoutDescriptor {
+                label: None,
                 bindings: &[
-                    wgpu::BindGroupLayoutBinding {
+                    wgpu::BindGroupLayoutEntry {
                         binding: 0,
                         visibility: wgpu::ShaderStage::COMPUTE,
                         ty: wgpu::BindingType::StorageBuffer {
@@ -115,7 +121,7 @@ impl SlicePipeline {
                             readonly: false,
                         },
                     },
-                    wgpu::BindGroupLayoutBinding {
+                    wgpu::BindGroupLayoutEntry {
                         binding: 1,
                         visibility: wgpu::ShaderStage::COMPUTE,
                         ty: wgpu::BindingType::StorageBuffer {
@@ -173,64 +179,48 @@ impl SlicePipeline {
             (simplex_count * 12 * std::mem::size_of::<Vertex3>() as u32)
                 as wgpu::BufferAddress;
 
-        let slice_plane_buffer = ctx
-            .device
-            .create_buffer_mapped(
-                1,
-                wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
-            )
-            .fill_from_slice(&[SlicePlane::default()]);
+        let slice_plane_buffer = ctx.device.create_buffer_with_data(
+            bytemuck::cast_slice(&[SlicePlane::default()]),
+            wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
+        );
 
-        let transform_buffer = ctx
-            .device
-            .create_buffer_mapped(
-                1,
-                wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
-            )
-            .fill_from_slice(&[Transform4::default()]);
+        let transform_buffer = ctx.device.create_buffer_with_data(
+            bytemuck::cast_slice(&[Transform4::default()]),
+            wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
+        );
 
-        let indirect_command_buffer = ctx
-            .device
-            .create_buffer_mapped(
-                1,
-                wgpu::BufferUsage::INDIRECT
-                    | wgpu::BufferUsage::STORAGE
-                    | wgpu::BufferUsage::COPY_DST,
-            )
-            .fill_from_slice(&[DrawIndirectCommand::default()]);
+        let indirect_command_buffer = ctx.device.create_buffer_with_data(
+            bytemuck::cast_slice(&[DrawIndirectCommand::default()]),
+            wgpu::BufferUsage::INDIRECT
+                | wgpu::BufferUsage::STORAGE
+                | wgpu::BufferUsage::COPY_DST,
+        );
 
         let dst_vertex_buffer =
             ctx.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("dst_vertex_buffer"),
                 size: dst_vertex_buffer_size,
                 usage: wgpu::BufferUsage::STORAGE | wgpu::BufferUsage::VERTEX,
             });
 
-        let simplex_count_buffer = ctx
-            .device
-            .create_buffer_mapped(
-                1,
-                wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
-            )
-            .fill_from_slice(&[simplex_count]);
+        let simplex_count_buffer = ctx.device.create_buffer_with_data(
+            bytemuck::cast_slice(&[simplex_count]),
+            wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
+        );
 
-        let vertex_buffer = ctx
-            .device
-            .create_buffer_mapped(
-                vertices.len(),
-                wgpu::BufferUsage::COPY_DST | wgpu::BufferUsage::STORAGE_READ,
-            )
-            .fill_from_slice(vertices);
+        let vertex_buffer = ctx.device.create_buffer_with_data(
+            bytemuck::cast_slice(&vertices),
+            wgpu::BufferUsage::COPY_DST | wgpu::BufferUsage::STORAGE_READ,
+        );
 
-        let index_buffer = ctx
-            .device
-            .create_buffer_mapped(
-                indices.len(),
-                wgpu::BufferUsage::COPY_DST | wgpu::BufferUsage::STORAGE_READ,
-            )
-            .fill_from_slice(indices);
+        let index_buffer = ctx.device.create_buffer_with_data(
+            bytemuck::cast_slice(&indices),
+            wgpu::BufferUsage::COPY_DST | wgpu::BufferUsage::STORAGE_READ,
+        );
 
         let src_bind_group =
             ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("slice_src_bind_group"),
                 layout: &self.src_bind_group_layout,
                 bindings: &[
                     wgpu::Binding {
@@ -260,6 +250,7 @@ impl SlicePipeline {
 
         let uniform_bind_group =
             ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("slice_uniform_bind_group"),
                 layout: &self.uniform_bind_group_layout,
                 bindings: &[
                     wgpu::Binding {
@@ -283,6 +274,7 @@ impl SlicePipeline {
 
         let dst_bind_group =
             ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("slice_dst_bind_group"),
                 layout: &self.dst_bind_group_layout,
                 bindings: &[
                     wgpu::Binding {
@@ -324,10 +316,10 @@ impl SlicePipeline {
         mesh: &MeshBinding,
     ) {
         // update slice
-        let slice_staging_buffer = ctx
-            .device
-            .create_buffer_mapped(1, wgpu::BufferUsage::COPY_SRC)
-            .fill_from_slice(&[*slice]);
+        let slice_staging_buffer = ctx.device.create_buffer_with_data(
+            bytemuck::cast_slice(&[*slice]),
+            wgpu::BufferUsage::COPY_SRC,
+        );
         encoder.copy_buffer_to_buffer(
             &slice_staging_buffer,
             0,
@@ -337,10 +329,10 @@ impl SlicePipeline {
         );
 
         // update transform
-        let transform_staging_buffer = ctx
-            .device
-            .create_buffer_mapped(1, wgpu::BufferUsage::COPY_SRC)
-            .fill_from_slice(&[*transform]);
+        let transform_staging_buffer = ctx.device.create_buffer_with_data(
+            bytemuck::cast_slice(&[*transform]),
+            wgpu::BufferUsage::COPY_SRC,
+        );
         encoder.copy_buffer_to_buffer(
             &transform_staging_buffer,
             0,
@@ -350,10 +342,10 @@ impl SlicePipeline {
         );
 
         // reset indirect command buffer
-        let command_staging_buffer = ctx
-            .device
-            .create_buffer_mapped(1, wgpu::BufferUsage::COPY_SRC)
-            .fill_from_slice(&[DrawIndirectCommand::default()]);
+        let command_staging_buffer = ctx.device.create_buffer_with_data(
+            bytemuck::cast_slice(&[DrawIndirectCommand::default()]),
+            wgpu::BufferUsage::COPY_SRC,
+        );
         encoder.copy_buffer_to_buffer(
             &command_staging_buffer,
             0,

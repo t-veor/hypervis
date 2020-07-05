@@ -10,28 +10,34 @@ pub struct GraphicsContext {
 }
 
 impl GraphicsContext {
-    pub fn new(window: &Window) -> Result<(Self, wgpu::SwapChain)> {
+    pub async fn new(window: &Window) -> Result<(Self, wgpu::SwapChain)> {
         let size = window.inner_size();
         let surface = wgpu::Surface::create(window);
-        let adapter = wgpu::Adapter::request(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            ..Default::default()
-        })
+        let adapter = wgpu::Adapter::request(
+            &wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                compatible_surface: None,
+            },
+            wgpu::BackendBit::PRIMARY,
+        )
+        .await
         .ok_or(anyhow!("Could not acquire adapter"))?;
 
-        let (device, queue) = adapter.request_device(&wgpu::DeviceDescriptor {
-            extensions: wgpu::Extensions {
-                anisotropic_filtering: false,
-            },
-            limits: Default::default(),
-        });
+        let (device, queue) = adapter
+            .request_device(&wgpu::DeviceDescriptor {
+                extensions: wgpu::Extensions {
+                    anisotropic_filtering: false,
+                },
+                limits: Default::default(),
+            })
+            .await;
 
         let sc_desc = wgpu::SwapChainDescriptor {
             usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT,
             format: wgpu::TextureFormat::Bgra8UnormSrgb,
             width: size.width,
             height: size.height,
-            present_mode: wgpu::PresentMode::Vsync,
+            present_mode: wgpu::PresentMode::Fifo,
         };
         let swap_chain = device.create_swap_chain(&surface, &sc_desc);
 

@@ -5,8 +5,10 @@ authors = ["Tyler Zhang <tianlinzhang@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-winit = "0.20"
-wgpu = "0.4"
+futures = "0.3"
+winit = "0.22"
+wgpu = "0.5"
+bytemuck = "1.2"
 anyhow = "1.0"
 glsl-to-spirv = "0.1"
 cgmath = "0.17"
@@ -16,6 +18,6 @@ rand = "0.7"
 lru = "0.4"
 slotmap = "0.4"
 smallvec = "1.2"
-imgui = "0.3"
-imgui-winit-support = { version = "0.3", features = ["winit-20"]}
-imgui-wgpu = "0.5"
+imgui = "0.4"
+imgui-winit-support = "0.4"
+imgui-wgpu = "0.7"

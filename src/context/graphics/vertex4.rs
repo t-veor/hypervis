@@ -7,6 +7,9 @@ pub struct Vertex4 {
     pub color: Vector4<f32>,
 }
 
+unsafe impl bytemuck::Pod for Vertex4 {}
+unsafe impl bytemuck::Zeroable for Vertex4 {}
+
 impl Vertex4 {
     pub fn desc<'a>() -> wgpu::VertexBufferDescriptor<'a> {
         use std::mem;

@@ -192,7 +192,7 @@ impl Application for TestApp {
                 let size = ctx.window.inner_size();
                 let (x, y) = (
                     position.x as f32 / size.width as f32 * 2.0 - 1.0,
-                    position.y as f32 / size.height as f32 * 2.0 - 1.0,
+                    position.y as f32 / size.height as f32 * -2.0 + 1.0,
                 );
 
                 let mut v0 = self
@@ -447,7 +447,9 @@ impl Application for TestApp {
         });
 
         let mut encoder = graphics_ctx.device.create_command_encoder(
-            &wgpu::CommandEncoderDescriptor { todo: 0 },
+            &wgpu::CommandEncoderDescriptor {
+                label: Some("compute_encoder"),
+            },
         );
 
         self.world.compute(
@@ -465,7 +467,9 @@ impl Application for TestApp {
             .update_view_proj(graphics_ctx, &self.view_proj);
 
         let mut encoder = graphics_ctx.device.create_command_encoder(
-            &wgpu::CommandEncoderDescriptor { todo: 0 },
+            &wgpu::CommandEncoderDescriptor {
+                label: Some("render_encoder"),
+            },
         );
 
         {
@@ -529,5 +533,6 @@ impl Application for TestApp {
 }
 
 fn main() -> Result<()> {
-    context::run::<TestApp>("Hello world!", (1280, 720))
+    let future = context::run::<TestApp>("Hello world!", (1280, 720));
+    futures::executor::block_on(future)
 }

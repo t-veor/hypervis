@@ -36,7 +36,7 @@ pub struct Ctx {
 }
 
 impl Ctx {
-    fn new(
+    async fn new(
         title: &str,
         size: (u32, u32),
         event_loop: &EventLoop<()>,
@@ -47,7 +47,8 @@ impl Ctx {
             .build(event_loop)?;
         let size = window.inner_size();
 
-        let (mut graphics_ctx, swap_chain) = GraphicsContext::new(&window)?;
+        let (mut graphics_ctx, swap_chain) =
+            GraphicsContext::new(&window).await?;
 
         let mut imgui = imgui::Context::create();
         let mut imgui_platform =
@@ -77,9 +78,12 @@ impl Ctx {
     }
 }
 
-pub fn run<App: Application>(title: &str, size: (u32, u32)) -> Result<()> {
+pub async fn run<App: Application>(
+    title: &str,
+    size: (u32, u32),
+) -> Result<()> {
     let event_loop = EventLoop::new();
-    let mut ctx = Ctx::new(title, size, &event_loop)?;
+    let mut ctx = Ctx::new(title, size, &event_loop).await?;
 
     let mut app = App::init(&mut ctx);
 
@@ -128,7 +132,7 @@ pub fn run<App: Application>(title: &str, size: (u32, u32)) -> Result<()> {
                 ctx.window.request_redraw();
             }
             Event::RedrawRequested(_) => {
-                let frame = ctx.swap_chain.get_next_texture();
+                let frame = ctx.swap_chain.get_next_texture().unwrap();
                 ctx.imgui_platform
                     .prepare_frame(ctx.imgui.io_mut(), &ctx.window)
                     .expect("Failed to prepare frame.");
@@ -137,10 +141,12 @@ pub fn run<App: Application>(title: &str, size: (u32, u32)) -> Result<()> {
 
                 app.render(&mut ctx.graphics_ctx, &frame, &ui);
 
-                let mut encoder =
-                    ctx.graphics_ctx.device.create_command_encoder(
-                        &wgpu::CommandEncoderDescriptor { todo: 0 },
-                    );
+                let mut encoder = ctx
+                    .graphics_ctx
+                    .device
+                    .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                        label: Some("imgui_encoder"),
+                    });
 
                 ctx.imgui_platform.prepare_render(&ui, &ctx.window);
                 ctx.imgui_renderer

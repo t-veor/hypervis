@@ -12,21 +12,15 @@ pub struct Light {
     color: Vector4<f32>,
 }
 
+unsafe impl bytemuck::Pod for Light {}
+unsafe impl bytemuck::Zeroable for Light {}
+
 impl Light {
     pub fn new(position: Point3<f32>, fovy: f32, color: Vector4<f32>) -> Self {
-        #[rustfmt::skip]
-        let opengl_to_wgpu_matrix = Matrix4::new(
-            1.0, 0.0, 0.0, 0.0,
-            0.0, -1.0, 0.0, 0.0,
-            0.0, 0.0, 0.5, 0.0,
-            0.0, 0.0, 0.5, 1.0,
-        );
-
         let aspect = SHADOW_SIZE.width as f32 / SHADOW_SIZE.height as f32;
 
         Self {
-            proj: opengl_to_wgpu_matrix
-                * cgmath::perspective(Deg(fovy), aspect, 1.0, 20.0)
+            proj: cgmath::perspective(Deg(fovy), aspect, 1.0, 20.0)
                 * Matrix4::look_at(
                     position,
                     Point3::origin(),

@@ -34,8 +34,10 @@ float fetch_shadow(vec4 pos, float theta) {
     float bias = 0.0005 * tan(theta);
     bias = clamp(bias, 0, 0.001);
 
+    // compensate for the Y-flip difference between the NDC and texture coordinates
+    const vec2 flip_correction = vec2(0.5, -0.5);
     vec3 light_local = vec3(
-        pos.xy / pos.w * 0.5 + 0.5,
+        pos.xy * flip_correction / pos.w + 0.5,
         pos.z / pos.w - bias
     );
 

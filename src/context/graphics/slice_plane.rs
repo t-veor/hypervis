@@ -11,6 +11,9 @@ pub struct SlicePlane {
     pub proj_matrix: Matrix4<f32>,
 }
 
+unsafe impl bytemuck::Pod for SlicePlane {}
+unsafe impl bytemuck::Zeroable for SlicePlane {}
+
 impl Default for SlicePlane {
     fn default() -> Self {
         Self {

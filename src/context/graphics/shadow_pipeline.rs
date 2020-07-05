@@ -33,17 +33,15 @@ impl ShadowPipeline {
         let vs_module = ctx.device.create_shader_module(&vs_data);
         let fs_module = ctx.device.create_shader_module(&fs_data);
 
-        let light_buffer = ctx
-            .device
-            .create_buffer_mapped(
-                1,
-                wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
-            )
-            .fill_from_slice(&[Light::default()]);
+        let light_buffer = ctx.device.create_buffer_with_data(
+            bytemuck::cast_slice(&[Light::default()]),
+            wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
+        );
 
         let uniform_bind_group_layout = ctx.device.create_bind_group_layout(
             &wgpu::BindGroupLayoutDescriptor {
-                bindings: &[wgpu::BindGroupLayoutBinding {
+                label: None,
+                bindings: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStage::VERTEX,
                     ty: wgpu::BindingType::UniformBuffer { dynamic: false },
@@ -53,6 +51,7 @@ impl ShadowPipeline {
 
         let uniform_bind_group =
             ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("shadow_uniform_bind_group"),
                 layout: &uniform_bind_group_layout,
                 bindings: &[wgpu::Binding {
                     binding: 0,
@@ -99,8 +98,10 @@ impl ShadowPipeline {
                     stencil_read_mask: 0,
                     stencil_write_mask: 0,
                 }),
-                index_format: wgpu::IndexFormat::Uint16,
-                vertex_buffers: &[Vertex3::desc()],
+                vertex_state: wgpu::VertexStateDescriptor {
+                    index_format: wgpu::IndexFormat::Uint16,
+                    vertex_buffers: &[Vertex3::desc()],
+                },
                 sample_count: 1,
                 sample_mask: !0,
                 alpha_to_coverage_enabled: false,
@@ -116,14 +117,16 @@ impl ShadowPipeline {
 
     pub fn update_light(&self, ctx: &mut GraphicsContext, light: &Light) {
         let mut encoder = ctx.device.create_command_encoder(
-            &wgpu::CommandEncoderDescriptor { todo: 0 },
+            &wgpu::CommandEncoderDescriptor {
+                label: Some("light_update_encoder"),
+            },
         );
         // update the projection
         {
-            let staging_buffer = ctx
-                .device
-                .create_buffer_mapped(1, wgpu::BufferUsage::COPY_SRC)
-                .fill_from_slice(&[*light]);
+            let staging_buffer = ctx.device.create_buffer_with_data(
+                bytemuck::cast_slice(&[*light]),
+                wgpu::BufferUsage::COPY_SRC,
+            );
             encoder.copy_buffer_to_buffer(
                 &staging_buffer,
                 0,
@@ -145,13 +148,14 @@ impl ShadowPipeline {
             mipmap_filter: wgpu::FilterMode::Nearest,
             lod_min_clamp: -100.0,
             lod_max_clamp: 100.0,
-            compare_function: wgpu::CompareFunction::LessEqual,
+            compare: wgpu::CompareFunction::LessEqual,
         })
     }
 
     pub fn new_texture(&self, ctx: &GraphicsContext) -> wgpu::TextureView {
         ctx.device
             .create_texture(&wgpu::TextureDescriptor {
+                label: Some("shadow_texture"),
                 size: SHADOW_SIZE,
                 mip_level_count: 1,
                 sample_count: 1,
@@ -164,13 +168,13 @@ impl ShadowPipeline {
             .create_default_view()
     }
 
-    pub fn render(
-        &self,
-        render_pass: &mut wgpu::RenderPass,
-        mesh: &MeshBinding,
+    pub fn render<'a: 'c, 'b, 'c>(
+        &'a self,
+        render_pass: &'b mut wgpu::RenderPass<'c>,
+        mesh: &'a MeshBinding,
     ) {
         render_pass.set_pipeline(&self.pipeline);
-        render_pass.set_vertex_buffers(0, &[(&mesh.dst_vertex_buffer, 0)]);
+        render_pass.set_vertex_buffer(0, &mesh.dst_vertex_buffer, 0, 0);
         render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
         render_pass.draw_indirect(&mesh.indirect_command_buffer, 0);
     }
