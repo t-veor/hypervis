@@ -25,7 +25,6 @@ pub trait Application: 'static + Sized {
 
 pub struct Ctx {
     pub window: Window,
-    pub size: PhysicalSize<u32>,
     pub swap_chain: wgpu::SwapChain,
 
     pub graphics_ctx: GraphicsContext,
@@ -45,7 +44,6 @@ impl Ctx {
             .with_inner_size(PhysicalSize::new(size.0, size.1))
             .with_title(title)
             .build(event_loop)?;
-        let size = window.inner_size();
 
         let (mut graphics_ctx, swap_chain) =
             GraphicsContext::new(&window).await?;
@@ -68,7 +66,6 @@ impl Ctx {
 
         Ok(Self {
             window,
-            size,
             swap_chain,
             graphics_ctx,
             imgui,
@@ -87,7 +84,8 @@ pub async fn run<App: Application>(
 
     let mut app = App::init(&mut ctx);
 
-    event_loop.run(move |mut event, _, control_flow| {
+    event_loop.run(move |event, _, control_flow| {
+        /*
         if let Event::WindowEvent {
             event:
                 WindowEvent::CursorMoved {
@@ -100,6 +98,7 @@ pub async fn run<App: Application>(
                 .to_logical::<f64>(1.0)
                 .to_physical(ctx.imgui_platform.hidpi_factor());
         }
+        */
 
         ctx.imgui_platform.handle_event(
             ctx.imgui.io_mut(),

@@ -175,7 +175,7 @@ impl Application for TestApp {
             ctx,
             90.0,
             Point3::new(1.0, 5.0, -5.0),
-            Point3::new(0.0, 1.0, 0.0),
+            Point3::new(0.0, 0.0, 0.0),
         );
 
         self.depth_texture = self
