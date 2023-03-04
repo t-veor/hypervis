@@ -9,7 +9,7 @@ mod world;
 
 use anyhow::Result;
 use cgmath::{InnerSpace, Matrix4, Point3, SquareMatrix, Vector4, Zero};
-use winit::event::WindowEvent;
+use winit::event::{WindowEvent, VirtualKeyCode};
 
 use context::graphics::{
     Light, ShadowPipeline, SlicePipeline, SlicePlane, TriangleListPipeline,
@@ -278,15 +278,11 @@ impl Application for TestApp {
                 let pressed =
                     input.state == winit::event::ElementState::Pressed;
 
-                match input.scancode {
-                    /* W */
-                    17 => self.key_states.up = pressed,
-                    /* S */
-                    31 => self.key_states.down = pressed,
-                    /* A */
-                    30 => self.key_states.ana = pressed,
-                    /* D */
-                    32 => self.key_states.kata = pressed,
+                match input.virtual_keycode {
+                    Some(VirtualKeyCode::W) => self.key_states.up = pressed,
+                    Some(VirtualKeyCode::S) => self.key_states.down = pressed,
+                    Some(VirtualKeyCode::A) => self.key_states.ana = pressed,
+                    Some(VirtualKeyCode::D) => self.key_states.kata = pressed,
                     _ => (),
                 }
             }
