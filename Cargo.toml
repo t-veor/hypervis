@@ -4,9 +4,6 @@ version = "0.1.0"
 authors = ["Tyler Zhang <tianlinzhang@gmail.com>"]
 edition = "2018"
 
-[replace]
-"winit:0.22.2" = { git = "https://github.com/t-veor/winit", branch = "v0.22.2-aarch64-compile-fix" }
-
 [dependencies]
 futures = "0.3"
 winit = "0.22"
