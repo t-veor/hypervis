@@ -7,7 +7,10 @@ engine for 4D objects, written for learning both
 [wgpu-rs](https://github.com/gfx-rs/wgpu) and 4D geometry.
 
 I gave a talk about this project! You can watch the talk here:
-https://www.youtube.com/watch?v=_22oxXEX_xc&t=717s
+~~https://www.youtube.com/watch?v=_22oxXEX_xc&t=717s~~
+The talk link is unfortunately now dead, but you can view the slides and my
+presenter notes here:
+https://docs.google.com/presentation/d/1Ipvvhgd_gds5czb5EWOmtQ-pqi1DgSWqck_LW384sBk
 
 ![demo](etc/demo.gif)
 
